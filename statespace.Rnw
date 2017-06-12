@@ -1,0 +1,224 @@
+\documentclass[english]{beamer}
+\definecolor{links}{HTML}{2A1B81}
+\hypersetup{colorlinks,linkcolor=,urlcolor=links}
+\usepackage{natbib}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{bm}
+\usepackage{multicol}
+\usepackage{color}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{bm}
+\usepackage{graphicx}
+\let\oldemph=\emph
+\renewcommand{\emph}[1]{{\color{red} {\textbf{#1}}}}
+\newcommand{\pkglink}[1]{\href{http://cran.r-project.org/web/packages/#1}{\nolinkurl{#1}}}
+\newcommand{\rflink}[1]{\href{https://r-forge.r-project.org/projects/#1/}{\nolinkurl{#1}}}
+\newcommand{\fnlink}[2]{\href{http://stat.ethz.ch/R-manual/R-patched/library/#1/html/#2.html}{\nolinkurl{#1:#2}}}
+\newcommand{\code}[1]{{\tt #1}}
+\newcommand{\ssqobs}{\sigma^2_{\mbox{\small obs}}}
+\newcommand{\ssqproc}{\sigma^2_{\mbox{\small proc}}}
+\newcommand{\obs}[1]{#1_{\text{\small obs}}}
+\newcommand{\obst}[1]{#1_{\text{\small obs}}(t)}
+\newcommand{\obstm}[1]{#1_{\text{\small obs}}(t-1)}
+
+\bibliographystyle{notitle}
+
+\usetheme{Frankfurt}
+\usecolortheme{dove}
+\setbeamercovered{transparent}
+\setbeamercolor{description item}{fg=blue}
+
+\usepackage{babel}
+\begin{document}
+
+\makeatletter
+\def\newblock{\beamer@newblock}
+\makeatother 
+
+
+% http://tex.stackexchange.com/questions/38015/beamer-best-way-to-span-long-enumerations-on-different-frames
+\makeatletter
+\newenvironment{cenumerate}{%
+  \enumerate
+  \setcounter{\@enumctr}{\csname saved@\@enumctr\endcsname}%
+}{%
+  \expandafter\xdef\csname saved@\@enumctr\endcsname{\the\value{\@enumctr}}%
+  \endenumerate
+}
+\newenvironment{cenumerate*}{%
+  \enumerate
+}{%
+  \expandafter\xdef\csname saved@\@enumctr\endcsname{\the\value{\@enumctr}}%
+  \endenumerate
+}
+\makeatother
+<<opts,echo=FALSE>>=
+require("knitr")
+knit_hooks$set(crop=hook_pdfcrop)
+opts_chunk$set(fig.width=4,fig.height=4,
+               out.width="0.6\\textwidth",
+               fig.align="center",
+               tidy=FALSE,error=FALSE)
+@
+<<libs,echo=FALSE,message=FALSE>>=
+library(reshape)
+library(lattice)
+## library(lme4)
+## library(plotrix)
+library(ggplot2)
+theme_set(theme_bw())
+source("labfuns.R")
+@ 
+
+\title[Stochastic-dynamic estimation]{State space models}
+\author{Ben~Bolker}
+\institute{McMaster University \\
+Departments of Mathematics \& Statistics and Biology}
+
+\date{20 June 2017}
+% \pgfdeclareimage[height=0.5cm]{uflogo}{letterhdwm}
+% \logo{\pgfuseimage{uflogo}}
+\AtBeginSection[]{
+  \frame<beamer>{ 
+     \frametitle{Outline}   
+     \tableofcontents[currentsection] 
+   }
+ }
+
+\begin{frame}
+\titlepage
+\end{frame}
+% \beamerdefaultoverlayspecification{<+->}
+
+\begin{frame}
+\frametitle{Outline}
+\tableofcontents{}
+\end{frame}
+
+\section{State space models}
+
+\subsection{General intro}
+\begin{frame}
+\frametitle{State space models}
+\begin{itemize}
+\item models that address the fundamental problem that
+the probability of a set of observations depends on the
+\emph{unobserved} true values
+\item somehow have to deal with (integrate over?) the range of possible values of the \emph{latent variables}
+\item problems are generally very high-dimensional (many unobserved values), so brute force fails: \\ stochastic (\emph{Monte Carlo}) integration
+\item exploit conditioning: if we know $N(t)$, $N(t-1)$ and $N(t)$ are \emph{conditionally} independent
+\end{itemize}
+\end{frame}
+
+\subsection{Markov chain Monte Carlo}
+\begin{frame}
+\frametitle{Markov chain Monte Carlo}
+Very general way of calculating Bayesian \emph{posterior densities}
+\begin{description}
+\item[Gibbs sampling] exploit conditioning: 
+$$
+\text{Prob}(A,B,C) \propto \text{Prob}(A|B,C) \cdot \text{Prob}(B|A,C) \cdot \text{Prob}(C|A,B)
+$$
+This means that we can sample the conditional probabilities \emph{sequentially} and get the right answer.
+\item[Rejection sampling] (Metropolis-Hastings): we can pick new values of parameters at random, then pick a random number to decide whether to keep them. If our rule satisfies
+\begin{equation*}
+\frac{\text{Prob}(A)}{\text{Prob}(B)} = %
+\frac{P(\text{jump } B \to A) P(\text{accept }A|B)}%
+{P(\text{jump } A \to B) P(\text{accept }B|A)}
+\label{eq:mcmccrit}
+\end{equation*}
+then in the long run our chain will converge to the right distribution
+\end{description}
+\end{frame}
+
+\begin{frame}
+\frametitle{Black boxes/magic}
+Given enough time and thought, you can construct your
+own Gibbs and Metropolis-Hastings samplers.  Alternatively,
+you can use a powerful but opaque tool called BUGS (Bayesian Inference Using Gibbs Sampling), which exists in several incarnations (\code{WinBUGS}, \code{OpenBUGS}, \code{JAGS}).
+\pause
+
+BUGS allows you to specify a model in a specialized language (that looks a lot like R); it then constructs samplers for you and runs a Markov chain.  It can be accessed via R (\code{R2jags} package) or MATLAB (\url{https://code.google.com/p/matbugs/}).
+
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{BUGS code for the logistic function}
+{\small
+<<bugsmodel>>=
+model <- function() {
+  t[1] <- n0    ## initial values ...
+  o[1] ~ dnorm(t[1],tau.obs)
+  for (i in 2:N) {   ## step through observations ...
+     v[i] <- t[i-1]+r*t[i-1]*(1-t[i-1]/K)
+     t[i] ~ dnorm(v[i],tau.proc)
+     o[i] ~ dnorm(t[i],tau.obs)
+  }
+  r ~ dunif(0.1,maxr) ## priors ...
+  K ~ dgamma(0.005,0.005)
+  tau.obs ~ dgamma(0.005,0.005)
+  tau.proc ~ dgamma(0.005,0.005)
+  n0 ~ dgamma(1,n0rate)
+}
+@
+}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Dependency structure for logistic model}
+  \begin{center}
+  \includegraphics[height=1.75in]{pix/dynam-DAG}
+  \end{center}
+\end{frame}
+
+  
+\begin{frame}
+\frametitle{Running BUGS}
+\begin{itemize}
+  \item \emph{Good news}: BUGS code is (relatively) intuitive
+  \item \emph{Bad news}:
+    \begin{itemize}
+    \item Debugging is hard
+    \item Different parameterizations
+    \item Need to figure out how long to run chains \\
+      (convergence diagnostics)
+    \item Poor mixing
+    \item Slow computation
+    \end{itemize}
+  \end{itemize}
+\end{frame}
+
+\subsection{Other approaches}
+\begin{frame}
+\frametitle{Frequentist methods}
+\begin{itemize}
+\item MCMC is usually done in a Bayesian framework; \\
+opens various cans of worms
+\item there are many other related approaches,
+some classical
+\begin{itemize}
+\item sequential Monte Carlo/particle filters
+\citep{Ionides+2006,Doucet+2001,deValpine2004}: R \code{pomp} package 
+\item data cloning \citep{Lele+2007}: R \code{dclone} package
+\end{itemize}
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{Continuous-time models}
+I know this is possible via particle filtering
+methods, but I've never tried it \ldots
+
+\end{frame}
+
+\begin{frame}
+\frametitle{References}
+\let\emph\oldemph
+\tiny
+\bibliography{stochdyn}
+\end{frame}
+
+\end{document}
