@@ -1,0 +1,188 @@
+% Ben Bolker
+% `r date()`
+
+```{r setup,echo=FALSE,message=FALSE}
+library(ggplot2)
+library(reshape2)
+library(plyr)
+library(RColorBrewer)
+library(lattice)
+library(grid)
+library(knitr)
+zmargin <- theme(panel.spacing=unit(0,"lines"))
+theme_set(theme_bw())
+opts_chunk$set(fig.align="center",fig.width=5,fig.height=5,tidy=FALSE,message=FALSE)
+opts_knit$set(use.highlight=TRUE)
+knit_hooks$set(basefig=function(before, options, envir) {
+                   if (before) {
+                       par(bty="l",las=1)
+                   } else { }
+               })
+```
+
+Dynamic model parameter estimation, lab 1
+========================================================
+
+![cc](cc-attrib-nc.png)
+<!---
+(http://i.creativecommons.org/l/by-nc-sa/3.0/88x31.png)
+--->
+
+Licensed under the 
+[Creative Commons attribution-noncommercial license](http://creativecommons.org/licenses/by-nc-sa/2.5/ca/).
+Please share \& remix noncommercially, mentioning its origin.
+
+## Simulation
+
+It's always a good idea to practice estimation techniques on simulated data before trying them on real data.
+
+* If you can't get the right answer when you know what it is, in clean data where you know exactly what's going on, you're doomed.
+* You can explore what kind of precision you should be able to get in a real situation with a given amount/noisiness of data, and diagnose whether problems you are having might be related to lack of data or are something more fundamental.
+* You can quantify important characteristics of your estimation technique (bias, mean squared error, coverage)
+* You can evaluate the robustness of your estimation method by trying it with simulated data that do *not* match the theoretical model underlying the estimator
+
+A reasonable first stochastic model:
+
+$$
+\begin{split}
+\text{incidence (new infectious)}: \phi(t) & \sim \text{Binom}(N=S(t),p=1-\exp(-\beta I(t) \Delta t)) \\
+\text{recovery (old infectious lost)}: \psi(t) & \sim \text{Binom}(N=I(t),p=\gamma \Delta t)\\
+\end{split}
+$$
+(The $\Delta t$ isn't really necessary, but it is sometimes more convenient to have it in the equations than to rescale $\gamma$ and $\beta$ to explore the dynamical consequences of discrete time.)
+
+**Stop and think about this model; explain it to yourself or to your neighbor. Remembering that the mean of a binomial random variable is $N \cdot p$, what are the expected infection and recovery rates? Remembering that $\exp(x) \approx 1+x$ when $x \ll 1$, what is the expected infection rate for small $I$? If you know the definition of $R_0$, can you compute it for this model?  What are the conditions required for an epidemic to succeed?**
+
+An R implementation of the $t \to t+1$ mapping function:
+```{r}
+SIRdsim1 <- function(t,y,params) {
+   g <- with(as.list(c(y,params)), {
+      p <- 1-exp(-beta*I*dt)
+      inf <- rbinom(1,size=S,prob=p) ## pick one binom dev
+      recover <- rbinom(1,size=I,prob=gamma*dt)
+      c(S=S-inf,
+        I=I+inf-recover,
+        R=R+recover,
+        incidence=inf)
+   })
+   list(g,NULL)
+}
+```
+The incidence isn't really a state variable, it's an auxiliary observation, but this is a convenient way to include it in the output.
+We don't really need it yet, but it will be useful when we get to gradient matching ...
+
+You can run this with `deSolve::ode()`:
+```{r}
+set.seed(101)
+library("deSolve")
+m1 <- ode(t=1:20,y=c(S=100,I=1,R=0,incidence=0),
+    func=SIRdsim1,
+    parms=c(beta=0.04,gamma=0.5,dt=1),
+    method="iteration")
+```
+
+If you prefer (or if you are using MATLAB), you can write a version with a `for` loop instead.
+
+**Run this model and examine the output. Convince yourself that you understand the model by adjusting the parameters to make the epidemic die out (i.e. $R_0<1$). If you use R: use `head()`, `tail()`, `plot()` to examine the output. For a more compact version of the plot, try `matplot(m1[,1],m1[,-1],type="l",log="y")`. (Note that `plot(ode)` messes with your graphics settings.  To restore the settings to a full-page plot, either (1) use `par(mfrow=c(1,1))` or (2) close your graphics window (the next plot you create will open a new window with fresh settings).**
+
+Create two variants of the model above:
+
+* Make a deterministic version of the model. (This is useful for comparing with the stochastic variant, and for optimizing.) Call this function `SIRdsim_determ`.
+* Add observation error to incidence (`inf`) by making it a binomial variable (in R, `rbinom(1,size=inf,prob=rptprob)`): call the function `SIRdsim_obsproc`.
+
+Spend 10 minutes on these; if you get stuck, see `lab1solns.rmd`.
+
+## Trajectory matching (shooting)
+
+Implement a trajectory-matching solution to estimate
+the parameters of the model.  Assume that only the prevalence $I$ is observed (i.e., fit the model-predicted $I$ to the observed $I$). You can either assume the errors are normally distributed, or that the observed $I$ value is a Poisson random variable with mean equal to the true value of $I$ (R function `dpois()`). If this is too easy, use a negative binomial random variable with mean equal to $I$ and an estimated \emph{overdispersion parameter} (in R, the log-likelihood of a negative binomial variable with mean `mu` and overdispersion parameter `k` [smaller `k` means more variance] is `dnbinom(x,mu=mu,size=k,log=TRUE)`).
+
+You can assume that you know the population size $N$ and that the epidemic starts with one infected individual, zero recovereds, and $N-1$ susceptible individuals (in general, models with unknown population size *and* unknown transmission rates have severe identifiability problems).
+
+**Extra challenge**: simulate the model and estimate the parameters many times to 
+evaluate the bias (the difference between the mean estimates and the true values) and the variance among the estimates. (The sum of $\text{bias}^2+\text{variance}$ is called the *mean square error*, and is a summary of the quality of the estimator.)
+For even more challenge, compute the *coverage* (the
+fraction of the time that the confidence intervals include the true value of the parameter.  The easiest way to get confidence intervals is to use `mle2()` to estimate the parameters: then `confint(fitted_model)` will automatically give you parameters (you may want to use `method="quad"` to stop `mle2()` from computing more accurate, but computationally intensive, profile confidence intervals).
+
+## Gradient matching (one-step-ahead)
+
+Implement a gradient-matching solution to estimate
+the parameters of the model.  Given that you know
+the starting value of $S$ ($N-1$), you can update it
+at each time step by subtracting off the (perfectly
+observed) incidence for the period from $t-1$ to $t$.
+Then you can use the incidence equation above
+$\text{Binom}(N=S(t),p=1-\exp(-\beta I(t) \Delta t))$
+to calculate the expected $p$ for the binomial distribution
+of incidence, and the R function `dbinom()` (or a
+MATLAB equivalent) to compute the log-likelihood.
+
+### Real data!
+
+K. Dietz gives some data on a pneumonic plague outbreak in Harbin (China) in 1910/1911; the data are extracted (I think) from \cite{international_plague_conference_1911_:_mukden_report_1912}, in \cite{dietz_epidemics:_2009}.
+```{r echo=FALSE}
+(harbin <- read.csv("Dietz_harbin_sm.csv"))
+par(las=1,bty="l")
+plot(deaths.per.week~week,data=harbin)
+```
+Dietz says he used a mean infectious period of 11 days and found an initial population size of 2985 and an $R_0$ value of 2.  Fitting $\beta$ and $N$ as parameters, using $R_0=\beta N/\gamma$, and taking $\gamma=1/11$, see if you agree (assume 100% mortality, and that death occurs at the end of the infectious period).
+
+## Kalman filter
+
+Here is the objective function I wrote for
+the extended Kalman filter applied to the logistic function:
+
+```{r nlkflik}
+nlkflik  <-  function(logr,logK,logprocvar,
+                      logobsvar,logM.n.start,
+                      logVar.n.start,obs.data) {
+  ## back-transform variables from log to raw scale
+  ## and pass them to nlkfpred
+  pred  <-  nlkfpred(r=exp(logr),
+            K=exp(logK),
+            procvar=exp(logprocvar),
+            obsvar=exp(logobsvar),
+            M.n.start=exp(logM.n.start),
+            Var.n.start=exp(logVar.n.start),
+            Nobs=obs.data)
+  -sum(dnorm(obs.data,mean=pred$mean,
+             sd=sqrt(pred$var),log=TRUE))
+}
+```
+
+And here is the KF computation itself:
+```{r}
+nlkfpred  <-  function(r,K,procvar,obsvar,
+                       M.n.start,Var.n.start,Nobs) {
+  ## set up vectors
+  nt  <-  length(Nobs)
+  M.nobs  <-  numeric(nt)
+  Var.nobs  <-  numeric(nt)
+  ## starting conditions
+  M.n  <-  M.n.start
+  Var.n  <-  Var.n.start
+  M.nobs[1]  <-  M.n.start
+  Var.nobs[1]  <-  Var.n.start+obsvar
+  for (t in 2:nt) {
+    ## update mean
+    M.ni  <-  M.n+r*M.n*(1-M.n/K)
+    ## first-order coef of Taylor expansion (a=0)
+    b  <-  1+r-2*r*M.n/K
+    ## KF updating
+    Var.ni  <-  b^2*Var.n + procvar
+    M.nobs[t]  <-  M.ni
+    Var.nobs[t]  <-  Var.ni + obsvar
+    M.n  <-  M.ni +  Var.ni/Var.nobs[t]*(Nobs[t]-M.nobs[t])
+    Var.n  <-  Var.ni*(1 - Var.ni/Var.nobs[t])
+  } 
+  list(mean=M.nobs,var=Var.nobs)
+}
+```
+
+Adapt this to the discrete epidemic case.
+
+## If you get bored (!)
+
+* Write a SIMEX estimator for the epidemic model (you will probably have to go ahead and assume Normal errors, even though this is somewhat unrealistic).
+* Implement Gillespie algorithm code for a continuous-time epidemic model (you can write your own, or take mine from \code{gillespie.pdf}, or steal some from elsewhere on the web).  Fit discrete-time models with fairly small time steps to the continuous-time simulation data and see how well you do.
+* The 1906 Bombay plague data were used as an example in some of the first epidemic models, and have been routinely used ever since as an example of a simple SIR model. It turns out that the real situation is much more complex, and the example is probably bogus.  Read \cite{bacaer_model_2012} and see what you think.
