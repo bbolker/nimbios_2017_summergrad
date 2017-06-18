@@ -98,7 +98,7 @@ Departments of Mathematics \& Statistics and Biology}
 \tableofcontents{}
 \end{frame}
 
-\section{Philosophy}
+\section{Overview}
 \subsection{ }
 
 \begin{frame}
@@ -114,31 +114,32 @@ static & dynamic \\
 phenomenological & mechanistic
 \end{tabular}
 \end{center}
-Standard time-series models (ARIMA, spectral/wavelet analyses) are
-(mostly) \emph{phenomenological} and \emph{linear}
+\begin{itemize}
+\item Time-series models: mostly
+\emph{phenomenological} and \emph{linear} \\ 
+(e.g. ARIMA, spectral/wavelet analyses)
+\item Biomath models: mostly
+\emph{mechanistic} and \emph{nonlinear} \\
+(e.g. Lotka-Volterra, SIR, Fitzhugh-Nagumo)
+\end{itemize}
 \end{frame}
 
 \begin{frame}
 \frametitle{Modeling (aside)}
 
 \small
-\begin{tabular}{cllll}  
-  \textbf{Space} & \textbf{Time} & \textbf{Populations} &
-    \textbf{Random} & \textbf{Model} \\
+\begin{tabular}{llll}  
+\textbf{Time} & \textbf{Population state} & \textbf{Randomness} & \textbf{Model} \\
     \hline  
-Disc & Disc & Disc & deterministic & cellular automaton \\
-Disc & Disc & Disc & stochastic & stochastic CA \\
-Disc & Disc & Cont & either & coupled-map lattice \\
-Disc & Cont & Disc & stochastic & interacting particle system \\
-         &          &            &        & $\approx$ pair approximation \\
-Cont & Disc & Cont & either & integrodifference equation \\
-Cont & either & Disc & stochastic &  spatial point process \\
-         &          &            &        & $\approx$ spatial moment equations \\
-
-Cont & Cont & Cont & deterministic & integrodifferential, \\
-           &            &            &               & partial differential equation \\
-                      &            &            &               & (reaction-diffusion equation) \\
-Cont & Cont & Cont & stochastic & stochastic IDE/PDE
+discrete & discrete & deterministic & *\cite{Henson+2001} \\
+discrete & discrete & stochastic & \\
+discrete & continuous & deterministic & \\
+discrete & continuous & stochastic & random walk \\
+continuous & discrete & deterministic & weird \\
+continuous & discrete & stochastic & branching process / \\
+           &          &            & cont. Markov \\
+continuous & continuous & deterministic & ODE \\
+continuous & continuous & stochastic & stochastic ODE 
 \end{tabular}
 \end{frame}
 
@@ -198,8 +199,8 @@ a1  <-  arima(x0,c(1,0,0))  ## what was this for??
 
 \begin{frame}
 \frametitle{Linear example}
-<<procerr1,echo=FALSE,fig.height=4,fig.width=8,out.width="1.0\\textwidth",crop=TRUE>>=
-op <- par(pty="s",mfrow=c(1,2),cex=1.5,mgp=c(2.5,1,0),
+<<procerr1,echo=FALSE,fig.height=5,fig.width=10,out.width="1.0\\textwidth",crop=TRUE>>=
+op <- par(pty="s",mfrow=c(1,2),cex=1.5,mgp=c(2.25,1,0),
   mar=c(4,4,2,1)+0.1,las=1,lwd=2,bty="l")
 plot(x0,xlab="Time",ylab="N(t)",type="l")
 abline(lm.ols,lwd=2)
@@ -272,7 +273,11 @@ env_procobs  <-  t(apply(Nmat_proconly,1,quantile,c(0.025,0.975)))
 \frametitle{Why simulate?}
 
 \begin{itemize}
-\item something here
+\item understand dynamics
+\item test methods in best-case scenario
+\item explore precision/power
+\item quantify properties of statistical estimators
+\item evaluate robustness
 \end{itemize}
 \end{frame}
 
@@ -328,13 +333,13 @@ for (i in 1:nt) {
 \begin{frame}[fragile]
 \frametitle{R code (version 2)}
 <<lincode2,results="hide">>=
-library("deSolve")
+library(deSolve)
 linfun <- function(t,y,parms) {
-  g <- with(as.list(c(y,parms)), {
+  g <- with(as.list(c(y,parms)), {  ## magic to use param names
      N_new <- rnorm(1,N+b,sd_proc)
      c(N=N_new,Nobs=rnorm(1,N_new,sd_obs))
   })
-  list(g,NULL)
+  return(list(g))  ## deSolve needs this format
 }
 set.seed(101)
 N0 <- c(N=a,Nobs=rnorm(1,a,sd_obs))
@@ -347,13 +352,14 @@ ode(N0,1:nt,linfun,linparms,method="iteration")
 \frametitle{R code (version 3)}
 
 For this particular example, we can cheat
-because the process error doesn't really affect
+because the process error doesn't affect
 the future dynamics --- it just accumulates:
 <<lincode3,results="hide">>=
 N_det <- a+b*(0:(nt-1))
 set.seed(101)  ## for reproducibility
-N <- N_det+cumsum(c(0,rnorm(nt-1,0,sd_proc)))
-N_obs <- rnorm(nt,N,sd_obs)
+proc_noise <- rnorm(nt-1,mean=0,sd=sd_proc)
+N <- N_det+cumsum(c(0,proc_noise))
+N_obs <- rnorm(nt,mean=N,sd=sd_obs)
 @
 \end{frame}
 
@@ -386,10 +392,9 @@ dsim = function(nt=20,N0=(a-b),a=6,b=1,p=1,
   }
   Nobs
 }
-nt <- 20
+nt <- 20L ## integer
 dN <- dsim()
 nsim <- 1000
-nt <- 20
 dNdet <- numeric(20)
 dNdet[1] <- 5
 for (i in 2:20) dNdet[i] <- dNdet[i-1]*6/(dNdet[i-1]+5)
@@ -424,13 +429,31 @@ text(14,7.2,"Observation only",adj=0,col=colvec[2])
 \begin{equation*}
 \begin{split}
 N(1) & =  N_0 \\
-N(t+1) & \sim  \text{Poisson}(aN(t)/(b+N(t))) \\
+N(t+1) & \sim  \text{Poisson}\left(\frac{aN(t)}{b+N(t)}\right) \\
 \obst{N} & \sim  \mbox{Binomial}(N(t),p)
 \end{split}
 \end{equation*}
 \end{column}
 \end{columns}
-(Equating (1) process-error-only and observation-error-only and \\ (2) deterministic and stochastic version is fairly hard \ldots)
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{R code}
+<<hypex>>=
+hypfun <- function(t,y,parms) {
+    g <- with(as.list(c(y,parms)), {  ## magic to use param names
+        N_det <- a*N/(b+N)
+        N <- rpois(1,lambda=N_det)
+        N_obs <- rbinom(1,size=N,prob=prob_obs)
+        c(N=N,Nobs=N_obs)
+  })
+  return(list(as.numeric(g)))  ## deSolve needs this format
+}
+set.seed(101)
+N0 <- c(N=4,N_obs=4)
+hypparms <- c(a=6,b=1,prob_obs=0.9)
+ode(N0,times=1:nt,func=hypfun,parms=hypparms,method="iteration")
+@
 \end{frame}
 
 \subsection{Continuous time}
@@ -442,8 +465,9 @@ N(t+1) & \sim  \text{Poisson}(aN(t)/(b+N(t))) \\
 \item ordinary differential equations plus a \emph{Wiener process} \\
 (= derivative of a Brownian motion)
 \item delicate analysis (For biologists: \cite{turelli_random_1977,roughgarden_theory_1995}. For mathematicians: \cite{oksendal_stochastic_2003})
-\item Specialized integration methods
-\item Better for cellular/physiological than population models?
+\item More common for cellular/physiological than population models
+\item Solve via \emph{Euler-Maruyama} \\
+(= Euler + appropriately scaled Gaussian noise)
 \end{itemize}
 \end{frame}
 
@@ -457,20 +481,21 @@ N(t+1) & \sim  \text{Poisson}(aN(t)/(b+N(t))) \\
 \end{itemize}
 \end{frame}
 
-\section{Simple approaches}
+\section{Fitting: simple approaches}
 \subsection{Trajectory matching}
 
 \begin{frame}
 \frametitle{Trajectory matching}
 \begin{itemize}
-\item Easiest approach: just simulate the deterministic
+\item Easiest: simulate the deterministic
 version of the model (i.e., with neither observation
 nor process error) and compare
 \item Because measurement error is (typically)
-independent at each observation, just have to multiply
-probabilities/add log-likelihoods
-\item for Normally distributed, equal-variance error, maximum likelihood estimation is equivalent to OLS fitting
-\item Very common for ODE model fitting, e.g. \cite{GaniLeach2001,vanVeen+2005}.
+independent at each observation, overall log-likelihood
+is sum of log-likelihood
+\item i.e. 
+\item for Normally distributed, equal-variance error, maximum likelihood estimation equivalent to least-squares
+\item Very common for ODE models, e.g. \cite{GaniLeach2001,vanVeen+2005}
 \end{itemize}
 \end{frame}
 
@@ -486,7 +511,7 @@ determ_fun <- function(determ_params) {
 ## 'params' includes process and observation parameters
 obj_fun <- function(params,data) { 
   estimate <- determ_fun(params[determ_params]))
-  obj <- fun(estimate,data,params[obs_params])
+  obj <- likfun(estimate,data,params[obs_params])
   return(obj)
 }
 find_minimum(obj_fun,starting_params,...)
@@ -514,7 +539,7 @@ optim(fn=obj_fun,par=c(a=5,b=2,sd=1),nt=20,Nobs=linN)
 <<traj_real2,results="hide",message=FALSE>>=
 library(bbmle)
 determ_fun <- function(a,b,nt) a+b*(1:nt)
-mle2(Nobs~dnorm(determ_fun(a,b,nt),sd),
+mle2(Nobs~dnorm(determ_fun(a,b,nt),sd=sd),
      data=list(Nobs=linN,nt=nt),
      start=list(a=5,b=2,sd=1.01),
      method="Nelder-Mead")
@@ -640,8 +665,9 @@ par(op)
 \item \emph{One-step-ahead prediction}
 \item Simple for discrete-time models \\
 (we need to specify $N(t+1) \sim N(t)$ anyway)
-\item Somewhat more complicated for continuous-time models
-  \citep{Ellner+2002}
+\item More complicated for continuous-time models
+  \citep{Ellner+2002}: fit a smooth curve to data, then
+  fit to derivatives of the curve
 \end{itemize}
 \end{frame}
 
@@ -730,14 +756,18 @@ efun <- function(method,m,s="sigma") {
     e
 }
 lsum <- rbind(subset(efun("traj",m.shoot,s="sd_obs"),par!="n0"),
-      efun("grad",m.step,s="sd_proc"),
-      data.frame(method="true",est=c(1,10,1,1),
-                 lwr=NA,upr=NA,par=c("r","K","sd_obs","sd_proc")))
+              efun("grad",m.step,s="sd_proc"))
+tvals <- data.frame(method="true",est=c(1,10,1,1),
+                 lwr=NA,upr=NA,par=c("r","K","sd_obs","sd_proc"))
 @ 
 <<lsumfig,echo=FALSE,fig.width=8,out.width="\\textwidth",warning=FALSE>>=
 ggplot(lsum,aes(x=par,y=est,colour=method,ymin=lwr,ymax=upr))+
     geom_pointrange(position=position_dodge(width=0.5))+
-    facet_wrap(~par,nrow=1,scale="free")
+    scale_colour_brewer(palette="Set1")+
+    geom_hline(data=tvals,aes(yintercept=est),lty=2)+
+    facet_wrap(~par,nrow=1,scale="free")+
+    theme(panel.grid.minor=element_blank(),
+          panel.grid.major=element_blank())
 @ 
 \end{frame}
 
