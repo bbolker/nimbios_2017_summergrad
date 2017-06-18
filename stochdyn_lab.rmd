@@ -1,6 +1,26 @@
-% Ben Bolker
-% `r date()`
+---
+title: "Parameter estimation for stochastic dynamic models: lab"
+author: "Ben Bolker"
+date: "`r Sys.time()`"
+---
 
+<style>
+  /* Style the linenumber div */
+
+  .linenumbers {
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background-color: #EBEBEB;
+    text-align: center;
+    padding: 0px 3px;
+    font-family: monospace;
+    float: left;
+    position: absolute;
+    transform:translate(-125%);
+    font-size: inherit !important;
+  }
+</style>
+  
 ```{r setup,echo=FALSE,message=FALSE}
 library(ggplot2)
 library(reshape2)
@@ -20,10 +40,8 @@ knit_hooks$set(basefig=function(before, options, envir) {
                })
 ```
 
-Dynamic model parameter estimation, lab 1
-========================================================
 
-![cc](cc-attrib-nc.png)
+![cc](pix/cc-attrib-nc.png)
 <!---
 (http://i.creativecommons.org/l/by-nc-sa/3.0/88x31.png)
 --->
@@ -31,6 +49,13 @@ Dynamic model parameter estimation, lab 1
 Licensed under the 
 [Creative Commons attribution-noncommercial license](http://creativecommons.org/licenses/by-nc-sa/2.5/ca/).
 Please share \& remix noncommercially, mentioning its origin.
+
+```{r pkgs}
+library(lattice)
+library(R2jags)
+library(coda)
+library(deSolve)
+```
 
 ## Simulation
 
@@ -51,14 +76,20 @@ $$
 $$
 (The $\Delta t$ isn't really necessary, but it is sometimes more convenient to have it in the equations than to rescale $\gamma$ and $\beta$ to explore the dynamical consequences of discrete time.)
 
-**Stop and think about this model; explain it to yourself or to your neighbor. Remembering that the mean of a binomial random variable is $N \cdot p$, what are the expected infection and recovery rates? Remembering that $\exp(x) \approx 1+x$ when $x \ll 1$, what is the expected infection rate for small $I$? If you know the definition of $R_0$, can you compute it for this model?  What are the conditions required for an epidemic to succeed?**
+**Stop and think about this model; explain it to yourself or to your neighbor.**
 
-An R implementation of the $t \to t+1$ mapping function:
-```{r}
+- Remembering that the mean of a binomial random variable is $N \cdot p$, what are the expected infectious and recovery periods? What is the distribution of th e infectious period?
+- Remembering that $\exp(x) \approx 1+x$ when $x \ll 1$, what is the expected infection rate when  $I \Delta t$ is small?
+- If you know the definition of $R_0$, can you compute it for this model?  What are the conditions required for an epidemic to succeed (on average)?
+
+
+An R implementation of the $t \to t+1$ mapping function: this uses the "magic" function `with()`,
+
+```{r dynsim1}
 SIRdsim1 <- function(t,y,params) {
    g <- with(as.list(c(y,params)), {
       p <- 1-exp(-beta*I*dt)
-      inf <- rbinom(1,size=S,prob=p) ## pick one binom dev
+      inf <- rbinom(1,size=S,prob=p) ## pick one binomial deviate
       recover <- rbinom(1,size=I,prob=gamma*dt)
       c(S=S-inf,
         I=I+inf-recover,
@@ -71,7 +102,7 @@ SIRdsim1 <- function(t,y,params) {
 The incidence isn't really a state variable, it's an auxiliary observation, but this is a convenient way to include it in the output.
 We don't really need it yet, but it will be useful when we get to gradient matching ...
 
-You can run this with `deSolve::ode()`:
+You can run this with `deSolve::ode()`, using the `"iteration"` method (`ode()` is mostly intended for solving differential equations):
 ```{r}
 set.seed(101)
 library("deSolve")
@@ -83,7 +114,12 @@ m1 <- ode(t=1:20,y=c(S=100,I=1,R=0,incidence=0),
 
 If you prefer (or if you are using MATLAB), you can write a version with a `for` loop instead.
 
-**Run this model and examine the output. Convince yourself that you understand the model by adjusting the parameters to make the epidemic die out (i.e. $R_0<1$). If you use R: use `head()`, `tail()`, `plot()` to examine the output. For a more compact version of the plot, try `matplot(m1[,1],m1[,-1],type="l",log="y")`. (Note that `plot(ode)` messes with your graphics settings.  To restore the settings to a full-page plot, either (1) use `par(mfrow=c(1,1))` or (2) close your graphics window (the next plot you create will open a new window with fresh settings).**
+**Run this model (pick a set of sensible parameters, e.g. that make $R_0=4$) and examine the output.**
+
+- Convince yourself that you understand the model by adjusting the parameters to make the epidemic die out (i.e. $R_0<1$).
+- If you use R: use `head()`, `tail()`, and `plot()` to examine the output. (For a more compact version of the plot, try `matplot(m1[,1],m1[,-1],type="l",log="y")`.)
+
+*Note that `plot(ode)` messes with your graphics settings.  To restore the settings to a full-page plot, either (1) use `par(mfrow=c(1,1))` or (2) use `dev.off()` (or click a button) close your graphics window (the next plot you create will open a new window with fresh settings).*
 
 Create two variants of the model above:
 
@@ -117,72 +153,33 @@ to calculate the expected $p$ for the binomial distribution
 of incidence, and the R function `dbinom()` (or a
 MATLAB equivalent) to compute the log-likelihood.
 
+```{r jags_model}
+model_fn <- file.path(tempdir(),"sir.jags")
+m1 <- m1[m1[,"S"]>0,]
+inits <- replicate(3,list(newinf=m1[,"incidence"],
+                          beta=0.04,gamma=0.5),
+                                  simplify=FALSE)
+j1 <- jags(model.file="sir.jags",
+           data=list(incid=m1[,"incidence"],N=100,
+                     nobs=nrow(m1)),
+           inits=inits,
+     parameters.to.save=c("beta","gamma","p.report"),
+     progress.bar="none")
+library(coda)
+library(lattice)
+xyplot(as.mcmc(j1))
+densityplot(as.mcmc(j1),layout=c(2,2))
+summary(as.mcmc(j1))
+```
+
 ### Real data!
 
 K. Dietz gives some data on a pneumonic plague outbreak in Harbin (China) in 1910/1911; the data are extracted (I think) from \cite{international_plague_conference_1911_:_mukden_report_1912}, in \cite{dietz_epidemics:_2009}.
 ```{r echo=FALSE}
-(harbin <- read.csv("Dietz_harbin_sm.csv"))
+(harbin <- read.csv("data/Dietz_harbin_sm.csv"))
 par(las=1,bty="l")
-plot(deaths.per.week~week,data=harbin)
+plot(plague_deaths~week,data=harbin)
 ```
 Dietz says he used a mean infectious period of 11 days and found an initial population size of 2985 and an $R_0$ value of 2.  Fitting $\beta$ and $N$ as parameters, using $R_0=\beta N/\gamma$, and taking $\gamma=1/11$, see if you agree (assume 100% mortality, and that death occurs at the end of the infectious period).
 
-## Kalman filter
 
-Here is the objective function I wrote for
-the extended Kalman filter applied to the logistic function:
-
-```{r nlkflik}
-nlkflik  <-  function(logr,logK,logprocvar,
-                      logobsvar,logM.n.start,
-                      logVar.n.start,obs.data) {
-  ## back-transform variables from log to raw scale
-  ## and pass them to nlkfpred
-  pred  <-  nlkfpred(r=exp(logr),
-            K=exp(logK),
-            procvar=exp(logprocvar),
-            obsvar=exp(logobsvar),
-            M.n.start=exp(logM.n.start),
-            Var.n.start=exp(logVar.n.start),
-            Nobs=obs.data)
-  -sum(dnorm(obs.data,mean=pred$mean,
-             sd=sqrt(pred$var),log=TRUE))
-}
-```
-
-And here is the KF computation itself:
-```{r}
-nlkfpred  <-  function(r,K,procvar,obsvar,
-                       M.n.start,Var.n.start,Nobs) {
-  ## set up vectors
-  nt  <-  length(Nobs)
-  M.nobs  <-  numeric(nt)
-  Var.nobs  <-  numeric(nt)
-  ## starting conditions
-  M.n  <-  M.n.start
-  Var.n  <-  Var.n.start
-  M.nobs[1]  <-  M.n.start
-  Var.nobs[1]  <-  Var.n.start+obsvar
-  for (t in 2:nt) {
-    ## update mean
-    M.ni  <-  M.n+r*M.n*(1-M.n/K)
-    ## first-order coef of Taylor expansion (a=0)
-    b  <-  1+r-2*r*M.n/K
-    ## KF updating
-    Var.ni  <-  b^2*Var.n + procvar
-    M.nobs[t]  <-  M.ni
-    Var.nobs[t]  <-  Var.ni + obsvar
-    M.n  <-  M.ni +  Var.ni/Var.nobs[t]*(Nobs[t]-M.nobs[t])
-    Var.n  <-  Var.ni*(1 - Var.ni/Var.nobs[t])
-  } 
-  list(mean=M.nobs,var=Var.nobs)
-}
-```
-
-Adapt this to the discrete epidemic case.
-
-## If you get bored (!)
-
-* Write a SIMEX estimator for the epidemic model (you will probably have to go ahead and assume Normal errors, even though this is somewhat unrealistic).
-* Implement Gillespie algorithm code for a continuous-time epidemic model (you can write your own, or take mine from \code{gillespie.pdf}, or steal some from elsewhere on the web).  Fit discrete-time models with fairly small time steps to the continuous-time simulation data and see how well you do.
-* The 1906 Bombay plague data were used as an example in some of the first epidemic models, and have been routinely used ever since as an example of a simple SIR model. It turns out that the real situation is much more complex, and the example is probably bogus.  Read \cite{bacaer_model_2012} and see what you think.

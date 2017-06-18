@@ -1,3 +1,4 @@
+# LaTeX leftovers
 *.aux
 *.bbl
 *.blg
@@ -7,4 +8,6 @@
 *.snm
 *.toc
 *.vrb
+# backup/swap files
 *~
+.#*

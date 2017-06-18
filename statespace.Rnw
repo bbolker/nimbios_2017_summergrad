@@ -98,22 +98,143 @@ Departments of Mathematics \& Statistics and Biology}
 \tableofcontents{}
 \end{frame}
 
-\section{State space models}
+\section{super-quick intro to Bayes}
 
-\subsection{General intro}
+\subsection{Philosophy}
+
+\newcommand{\ub}[2]{\underbrace{#1}_{\mbox{\small #2}}}
 \begin{frame}
-\frametitle{State space models}
+\frametitle{Big picture}
 \begin{itemize}
-\item models that address the fundamental problem that
-the probability of a set of observations depends on the
-\emph{unobserved} true values
-\item somehow have to deal with (integrate over?) the range of possible values of the \emph{latent variables}
-\item problems are generally very high-dimensional (many unobserved values), so brute force fails: \\ stochastic (\emph{Monte Carlo}) integration
-\item exploit conditioning: if we know $N(t)$, $N(t-1)$ and $N(t)$ are \emph{conditionally} independent
+\item use Bayes' rule
+\item avoid frequentist contortions
+\item integrate prior knowledge
+\item make coherent decisions
+\item compute hard things
 \end{itemize}
 \end{frame}
 
+\begin{frame}
+\frametitle{Bayes rule}
+
+\begin{equation*}
+\ub{P(H_i | D)}{posterior}  =  \ub{P(D | H_i)}{likelihood} \ub{P(H_i)}{prior}/ \ub{\sum_j P(H_j) P(D|H_j)}{P(data)}
+\end{equation*}
+
+<<bayespic,echo=FALSE,fig.width=8,fig.height=8>>=
+r <- 0
+d <- acos(r)
+scale <- c(0.5,0.3)
+npoints <- 100
+centre <- c(0.5,0.5)
+a <- seq(0, 2 * pi, len = npoints)
+m <- matrix(c(scale[1] * cos(a + d/2) + centre[1], 
+              scale[2] * cos(a - d/2) + centre[2]), npoints, 2)
+e <- 0.05
+hyp_pts <- matrix(c(0.37,1.04,
+  1+e,0.8+e,
+  1,-e,
+  0.4,-e,
+  -e,0.25),
+  byrow=TRUE,ncol=2)
+lab.pts <- matrix(c(0.091,0.255,0.597,0.557,
+  0.869,0.709,0.549,0.511,
+  0.170,0.22,
+  ##y
+  0.865,0.613,
+  0.932,0.698,0.191,0.477,
+  0.087,0.277,0.077,0.31),
+  ncol=2)
+##hyp_pts <- hyp_pts[c(5,1:4),]
+## lab.pts <- lab.pts[c(5,1:4),]
+## par(mar=c(0.2,0.2,0.2,0.2))
+plot(1,1,type="n",xlim=c((-e),1+e),ylim=c(-e,1+e),ann=FALSE,
+     xlab="",ylab="",axes=FALSE,xaxs="i",yaxs="i")
+box()
+polygon(m,col="lightgray",lwd=2)
+polygon(c(-e,0.5,0.4,-e),c(0.25,0.5,-e,-e),density=8,angle=0,
+        col="darkgray")
+lines(m,lwd=2)
+segments(rep(0.5,nrow(hyp_pts)),rep(0.5,nrow(hyp_pts)),
+         hyp_pts[,1],hyp_pts[,2])
+##text(lab.pts[,1],lab.pts[,2],1:10)
+for(i in 1:5) {
+  r <- 2*i-1
+  r2 <- 2*i
+  text(lab.pts[r,1],lab.pts[r,2], substitute(H[x],
+                                list(x=i)),adj=0,cex=2)
+  text(lab.pts[r2,1],lab.pts[r2,2], substitute(D*intersect("","","")*H[x],
+                                list(x=i)),adj=0,cex=2)
+}
+@ 
+
+\end{frame}
+
+\begin{frame}
+\frametitle{priors ($P(H_i)$}
+
+\begin{itemize}
+\item usually framed as ``prior belief''
+\item controversial
+\item if we set all $P(H_i)$ equal, $P(H_i|D) = P(D|H_i)/\sum P(D|H_j)$
+(\emph{scaled likelihood})
+\item can't really be swept under the rug
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{more on priors}
+
+\begin{itemize}
+\item \emph{weak} or \emph{diffuse}: little information
+\item \emph{uninformative} or \emph{flat}: no information
+\item \emph{improper}: integral diverges (but sometimes OK)
+\item weak priors can cause problems with sparse data and/or weakly identifiable models
+\item \emph{conjugate} priors: convenient functional forms
+\end{itemize}
+
+\end{frame}
+
+<<def_priorpix,echo=FALSE>>=
+tmpf <- function(a,b,N=10,minp=0,maxp=1,dp=1e-2,
+                 size=15,scaled_prior=TRUE,
+                 scaled_lik=TRUE,main="",legpos="left") {
+  pvec = seq(minp,maxp,by=dp)
+  likvec = dbinom(N,size=size,prob=pvec)
+  prior = dbeta(pvec,a,b) ## 2*(1-pvec)
+  ## plot(pvec,prior,type="l",main="prior")
+  post = dbeta(pvec,a+N,b+size-N)
+  ## prior*likvec/sum(prior*likvec)
+  ylab <- "posterior"
+  if (scaled_lik) {
+    likvec <- likvec/(sum(likvec)*dp)
+  }
+  matplot(pvec,cbind(likvec,prior,post),
+          type="l",ylab="probability/likelihood",
+          col=c(1,2,4),lty=1,main=main,
+          axes=FALSE)
+  box()
+  legend(legpos,
+         col=c(1,2,4),lty=1,
+         c("likelihood","prior","posterior"))
+}
+@
+
+\begin{frame}
+\frametitle{priors}
+
+<<pr1,echo=FALSE,fig.width=8,fig.height=8>>=
+par(mfrow=c(2,2))
+tmpf(1,1,main="flat prior")
+tmpf(0.01,10,main=expression(prior %->% 0))
+tmpf(10,0.01,main=expression(prior %->% 0.1))
+tmpf(11,6,main="prior agrees with data")
+@ 
+\end{frame}
+
 \subsection{Markov chain Monte Carlo}
+
 \begin{frame}
 \frametitle{Markov chain Monte Carlo}
 Very general way of calculating Bayesian \emph{posterior densities}
@@ -135,6 +256,14 @@ then in the long run our chain will converge to the right distribution
 \end{frame}
 
 \begin{frame}
+\frametitle{more on Gibbs}
+\end{frame}
+
+\begin{frame}
+\frametitle{more on Metropolis-Hastings}
+\end{frame}
+
+\begin{frame}
 \frametitle{Black boxes/magic}
 Given enough time and thought, you can construct your
 own Gibbs and Metropolis-Hastings samplers.  Alternatively,
@@ -144,6 +273,21 @@ you can use a powerful but opaque tool called BUGS (Bayesian Inference Using Gib
 BUGS allows you to specify a model in a specialized language (that looks a lot like R); it then constructs samplers for you and runs a Markov chain.  It can be accessed via R (\code{R2jags} package) or MATLAB (\url{https://code.google.com/p/matbugs/}).
 
 \end{frame}
+
+
+\subsection{General intro}
+\begin{frame}
+\frametitle{State space models}
+\begin{itemize}
+\item models that address the fundamental problem that
+the probability of a set of observations depends on the
+\emph{unobserved} true values
+\item somehow have to deal with (integrate over?) the range of possible values of the \emph{latent variables}
+\item problems are generally very high-dimensional (many unobserved values), so brute force fails: \\ stochastic (\emph{Monte Carlo}) integration
+\item exploit conditioning: if we know $N(t)$, $N(t-1)$ and $N(t)$ are \emph{conditionally} independent
+\end{itemize}
+\end{frame}
+
 
 \begin{frame}[fragile]
 \frametitle{BUGS code for the logistic function}

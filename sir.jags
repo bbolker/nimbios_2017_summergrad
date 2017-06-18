@@ -1,0 +1,24 @@
+## https://rpubs.com/bbolker/logist_stanjags
+model {
+  ## initial values
+  S[1] <- N-1
+  I[1] <- 1
+  R[1] <- 0
+  newinf[1] ~ dbin(0.5,10)  ## hack!
+  incid[1] ~ dbin(p.report,I[1])
+  ## step through observations
+  for (t in 2:nobs) {
+     infprob[t] <- 1-exp(-beta*I[t-1])
+     newinf[t] ~ dbin(infprob[t],S[t-1])
+     recover[t] ~ dbin(gamma,I[t-1])
+     S[t] <- S[t-1]-newinf[t]
+     I[t] <- I[t-1]+newinf[t]-recover[t]
+     R[t] <- R[t-1]+recover[t]
+     incid[t] ~ dbin(p.report,newinf[t])
+  }
+  ## priors
+  p.report ~ dbeta(1,1)
+  beta ~ dgamma(1,1)
+  gamma ~ dgamma(1,1)
+}
+
