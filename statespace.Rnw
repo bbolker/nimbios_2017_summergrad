@@ -73,7 +73,7 @@ theme_set(theme_bw())
 source("labfuns.R")
 @ 
 
-\title[Stochastic-dynamic estimation]{State space models}
+\title[Stochastic-dynamic estimation]{introduction to Bayesian state space models}
 \author{Ben~Bolker}
 \institute{McMaster University \\
 Departments of Mathematics \& Statistics and Biology}
@@ -253,7 +253,9 @@ tmpf(11,6,main="prior = likelihood")
 \begin{frame}
 \frametitle{you won't believe these two MCMC tricks}
 \begin{description}
-\item[Gibbs sampling] exploit conditioning, sample parameters one at a time
+\item[Gibbs sampling] sample parameters one at a time, \\
+exploiting conditioning
+
 \item[Rejection sampling] (Metropolis-Hastings): pick new values of parameters at random, then pick a random number to decide whether to keep them
 \end{description}
 \end{frame}
@@ -280,14 +282,15 @@ This means that we can sample the conditional probabilities \emph{sequentially} 
 Jump, evaluate (prior $\times$ likelihood), decide whether to accept
 \begin{equation*}
 \frac{\text{Prob}(A)}{\text{Prob}(B)} = %
-\frac{P(\text{jump } B \to A) P(\text{accept }A|B)}%
-{P(\text{jump } A \to B) P(\text{accept }B|A)}
+\frac{P(\text{jump } B \to A) \cdot P(\text{accept }A|B)}%
+{P(\text{jump } A \to B) \cdot P(\text{accept }B|A)}
 \label{eq:mcmccrit}
 \end{equation*}
 In the long run our chain will converge to the right distribution
 \begin{itemize}
-\item \emph{candidate distribution}: anything sensible
-\item \emph{acceptance rule}: $$P(\textrm{accept} \theta_2) =
+\item \emph{candidate distribution}: anything sensible \\
+(bad choices make sampling slow, but not incorrect)
+\item \emph{acceptance rule}: $$P(\textrm{accept } \theta_2) =
 \textrm{max}\left(1,
 \frac{\textrm{Pr}(\theta_2) L(\theta_2)}{\textrm{Pr}(\theta_1) L(\theta_1)}
 \right)$$
@@ -300,7 +303,7 @@ i.e. ``always accept if $\theta_2$ better: sometimes if $\theta_2$ worse''
 \begin{itemize}
 \item Can construct your own, customized samplers \citep{bolk+03c}
 \item Use BUGS (Bayesian Inference Using Gibbs Sampling) language (\code{WinBUGS}, \code{OpenBUGS}, \code{JAGS}, \code{NIMBLE})
-\item interfaces from R (\code{R2jags} package) or MATLAB (\url{https://github.com/msteyvers/matjags}).
+\item interfaces from R (\href{\code{R2jags} package}{https://CRAN.R-project.org/package=R2jags}) or MATLAB (\url{https://github.com/msteyvers/matjags}).
 \end{itemize}
 \end{frame}
 
@@ -351,8 +354,8 @@ model <- function() {
 \begin{itemize}
 \item BUGS code is not sequential (!)
 \item BUGS is not vectorized (need \code{for} loops)
-\item BUGS: \verb+~+ is ``distributed as'' (``stochastic node''),
-\verb+<-+ is assignment (``logical node'')
+\item BUGS: \verb+~+ means ``distributed as'' (``stochastic node'') \\
+\verb+<-+ means assignment (``logical node'')
 \item different distribution names and parameterizations
 (e.g. \code{dnorm(mean,prec)} for Normal, \code{dbin(size,prob)}
 for binomial): see \cite{lebauer_translating_2013}
@@ -380,6 +383,10 @@ for binomial): see \cite{lebauer_translating_2013}
 \item specify model and priors
 \item get model to compile
 \item run multiple chains
+\begin{itemize}
+\item discard \emph{burn-in}
+\item thin results
+\end{itemize}
 \item assess convergence
 \end{itemize}
 \end{frame}
@@ -390,7 +397,7 @@ for binomial): see \cite{lebauer_translating_2013}
 \item simplify model
 \item specify initial values explicitly
 \item narrow priors and/or fix some parameters
-\item run longer and thin
+\item run longer and thin more
 \end{itemize}
 \end{frame}
 
@@ -420,9 +427,9 @@ gelman.diag(as.mcmc(jagsout))
 
 \begin{frame}
 \frametitle{Density plots}
-<<jagsens,echo=FALSE,fig.width=8,fig.height=7>>=
+<<jagsens,echo=FALSE,fig.width=7,fig.height=6>>=
 densityplot(as.mcmc(jagsout),layout=c(2,2),asp="fill")
-@ 
+@
 \end{frame}
 
 
@@ -441,32 +448,62 @@ cat(jout[10:15],sep="\n")
 \end{frame}
 
 \begin{frame}
+\frametitle{Inference from posteriors}
+\begin{itemize}
+\item point estimates: mean, median (marginal)
+\item interval estimates: quantiles, \emph{highest posterior density} (\code{coda::HPDinterval})
+\item can summarize any quantity computed from samples \\
+(e.g. predictions)
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{Further resources}
+\begin{itemize}
+\item \cite{gelman_bayesian_2013} (fairly hard-core)
+\item \cite{hobbs_bayesian_2015} (friendlier, ecologist-focused)
+\item \cite{gelman_data_2006} (more regression-focused)
+\end{itemize}
+\end{frame}
+
+\begin{frame}
 \frametitle{The problem with MCMC (\href{https://xkcd.com/303/}{xkcd})}
 \includegraphics[height=0.7\textheight]{pix/xkcd_MCMC.png}
 \end{frame}
 
-\section{Other approaches to nonlinear dynamical fitting}
+\section[Other approaches]{Other approaches to nonlinear dynamical fitting}
 \subsection{}
 \begin{frame}
-\frametitle{Frequentist methods}
+\frametitle{Frequentist alternatives}
 \begin{itemize}
-\item MCMC is usually done in a Bayesian framework; \\
+\item MCMC is usually Bayesian; \\
 opens various cans of worms
 \item there are many other related approaches,
 some classical
 \begin{itemize}
+\item expectation-maximization
 \item sequential Monte Carlo/particle filters
-\citep{Ionides+2006,Doucet+2001,deValpine2004}: R \code{pomp} package 
+\citep{Ionides+2006,Doucet+2001,deValpine2004}: R \code{pomp}, \code{NIMBLE} packages, PyMC
 \item data cloning \citep{Lele+2007}: R \code{dclone} package
 \end{itemize}
 \end{itemize}
 \end{frame}
 
 \begin{frame}
-\frametitle{Continuous-time models}
+\frametitle{Estimation for continuous-time models}
 \begin{itemize}
 \item Particle methods
+\begin{itemize}
+\item simulate many trajectories (``particles'') step-by-step
+\item at each step, resample particles weighted by likelihood of current location
+\end{itemize}
 \item Approximate Bayesian computation
+\begin{itemize}
+\item sample parameters from prior
+\item simulate trajectories for each parameter set
+\item compute summary statistics (``probes'')
+\item save trajectories with summary stats near observed values
+\end{itemize}
 \end{itemize}
 
 \end{frame}

@@ -11,3 +11,7 @@
 # backup/swap files
 *~
 .#*
+\#*
+## R junk
+.Rhistory
+.RData
