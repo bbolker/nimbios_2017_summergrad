@@ -9,3 +9,10 @@ title: "to do for NIMBIOS workshop"
 - MCMC pix/examples
    - Gibbs sampling example
    - http://spark.rstudio.com/khines/mcmc ?
+
+## lab
+
+- why is trajectory-matching giving me negative gamma???
+    - outline pitfalls for trajectory matching
+- work on gradient-matching
+

@@ -61,39 +61,46 @@ library(deSolve)
 
 It's always a good idea to practice estimation techniques on simulated data before trying them on real data.
 
-* If you can't get the right answer when you know what it is, in clean data where you know exactly what's going on, you're doomed.
-* You can explore what kind of precision you should be able to get in a real situation with a given amount/noisiness of data, and diagnose whether problems you are having might be related to lack of data or are something more fundamental.
-* You can quantify important characteristics of your estimation technique (bias, mean squared error, coverage)
-* You can evaluate the robustness of your estimation method by trying it with simulated data that do *not* match the theoretical model underlying the estimator
+- If you can't get the right answer when you know what it is, in clean data where you know exactly what's going on, you're doomed.
+- You can explore what kind of precision you should be able to get in a real situation with a given amount/noisiness of data, and diagnose whether problems you are having might be related to lack of data or are something more fundamental.
+- You can quantify important characteristics of your estimation technique (bias, mean squared error, coverage)
+- You can evaluate the robustness of your estimation method by trying it with simulated data that do *not* match the theoretical model underlying the estimator
 
-A reasonable first stochastic model:
+A reasonable first stochastic model for an epidemic:
 
 $$
 \begin{split}
-\text{incidence (new infectious)}: \phi(t) & \sim \text{Binom}(N=S(t),p=1-\exp(-\beta I(t) \Delta t)) \\
-\text{recovery (old infectious lost)}: \psi(t) & \sim \text{Binom}(N=I(t),p=\gamma \Delta t)\\
+\text{incidence (new infectious)}: \phi(t) & \sim \text{Binom}(N=S(t),p=1-\exp(-\beta I(t)/N \Delta t)) \\
+\text{recovery (old infectious lost)}: \psi(t) & \sim \text{Binom}(N=I(t),p=1-\exp(-\gamma \Delta t))\\
 \end{split}
 $$
-(The $\Delta t$ isn't really necessary - we will $\Delta t=1$ below - but it is sometimes more convenient to have it in the equations than to rescale $\gamma$ and $\beta$ to explore the dynamical consequences of discrete time.)
 
-**Stop and think about this model; explain it to yourself or to your neighbor.**
+- the $1-\exp(-h \Delta t)$ transformation is a convenient way of turning a rate (or *hazard*) $h$ into a probability: this is convenient because it means we can use rates $>1$ in a discrete-time model without things going crazy
+- the $\Delta t$ isn't really necessary - we will set $\Delta t=1$ below - but it is sometimes more convenient to have it in the equations than to rescale $\gamma$ and $\beta$ to explore the dynamical consequences of discrete time.
+- similarly, scaling infection as $I/N$ is unnecessary in a constant-population model (we could just rescale $\beta$) but it makes $\beta$ a little easier to interpret
+
+**Stop: think about this model; explain it to yourself or to your neighbor.**
 
 - Remembering that the mean of a binomial random variable is $N \cdot p$, what are the expected infectious and recovery periods? What is the distribution of th e infectious period?
 - Remembering that $\exp(x) \approx 1+x$ when $x \ll 1$, what is the expected infection rate when  $I \Delta t$ is small?
 - $R_0$ can be defined as the expected number of secondary infections caused by a primary case, over the entire infectious period, in a completely susceptible population - can you compute it for this model?  What are the conditions required for an epidemic to succeed (on average)?
 
-An R implementation of the $t \to t+1$ mapping function: this uses the "magic" function `with()` [so we can use the names associated with the parameter and state vectors as labels] and returns the results as a list containing a vector [to make `deSolve` happy]. This version has only process error.
+An R implementation of the $t \to t+1$ mapping function.
+
+- this uses the "magic" function `with()` [so we can use the names associated with the parameter and state vectors as labels] and returns the results as a list containing a vector [to make `deSolve` happy].
+- this version has only process error.
 
 ```{r dynsim1}
 SIRdsim1 <- function(t,y,params) {
    g <- with(as.list(c(y,params)), {
-      p <- 1-exp(-beta*I)
-      inf <- rbinom(1,size=S,prob=p) ## pick one binomial deviate
-      recover <- rbinom(1,size=I,prob=gamma)
-      c(S=S-inf,
-        I=I+inf-recover,
+      p <- 1-exp(-beta*I/N)
+      gg <- 1-exp(-gamma)
+      newinf <- rbinom(1,size=S,prob=p) ## pick one binomial deviate
+      recover <- rbinom(1,size=I,prob=gg)
+      c(S=S-newinf,
+        I=I+newinf-recover,
         R=R+recover,
-        incidence=inf)
+        incidence=newinf)
    })
    list(g) ## for deSolve()
 }
@@ -105,32 +112,33 @@ You can run this with `deSolve::ode()`, using the `"iteration"` method (`ode()` 
 set.seed(101)
 library("deSolve")
 m1 <- ode(t=1:20,
-          y=c(S=100,I=1,R=0,incidence=0),
+          y=c(S=99,I=1,R=0,incidence=0),
           func=SIRdsim1,
-          parms=c(beta=0.04,gamma=0.5),
+          parms=c(beta=4.0,gamma=1.0,N=100),
           method="iteration")
 ```
 
 If you prefer (or if you are using MATLAB), you can write a version with a `for` loop instead.
 
-**Run this model (pick a set of sensible parameters, e.g. that make $R_0=4$) and examine the output.**
+**Stop: run this model (pick a set of sensible parameters, e.g. that make $R_0=4$ and $r=\beta -\gamma$ not too large) and examine the output.**
 
 - Convince yourself that you understand the model by adjusting the parameters to make the epidemic die out (i.e. $R_0<1$).
 - If you use R: use `head()`, `tail()`, and `plot()` to examine the output. (For a more compact version of the plot, try `matplot(m1[,1],m1[,-1],type="l",log="y")`.)
 
 *Note that `plot(ode)` messes with your graphics settings.  To restore the settings to a full-page plot, either (1) use `par(mfrow=c(1,1))` or (2) use `dev.off()` (or click a button) close your graphics window (the next plot you create will open a new window with fresh settings).*
 
-Create two variants of the model above:
+**Stop. Make a variant of the model above:**
 
-* Make a deterministic version of the model. (This is useful for comparing with the stochastic variant, and for optimizing.) Call this function `SIRdsim_determ`.
-* Add observation error to incidence (`inf`) by making the observed value a binomial deviate (in R, `rbinom(1,size=inf,prob=rptprob)`): call the function `SIRdsim_obsproc`.
+- Add observation error to incidence (`newinf`) by making the observed value a binomial deviate (in R, `rbinom(1,size=newinf,prob=rptprob)`): call the function `SIRdsim_obsproc`.
+- (optional) Make a deterministic version of the function. (This is useful for comparing with the stochastic variant, and for optimizing.) Call this function `SIRdsim_determ`.
 
-Spend 10 minutes on these; if you get stuck, see `lab1solns.rmd`.
+Spend $\approx 10$ minutes on these; if you get stuck, see `lab_solns.R`.
 
 ## Trajectory matching (shooting)
 
 Implement a trajectory-matching solution to estimate
-the parameters of the model.  Assume that only the prevalence $I$ is observed (i.e., fit the model-predicted $I$ to the observed $I$). You can either assume the errors are normally distributed, or that the observed $I$ value is a Poisson random variable with mean equal to the true value of $I$ (R function `dpois()`). If this is too easy, use a negative binomial random variable with mean equal to $I$ and an estimated \emph{overdispersion parameter} (in R, the log-likelihood of a negative binomial variable with mean `mu` and overdispersion parameter `k` [smaller `k` means more variance] is `dnbinom(x,mu=mu,size=k,log=TRUE)`).
+the parameters of the model.
+- You can fit either to *prevalence*, the number of infected individuals present (i.e., fit the model-predicted $I$ to the observed $I$). You can either assume the errors are normally distributed, or that the observed $I$ value is a Poisson random variable with mean equal to the true value of $I$ (R function `dpois()`). If this is too easy, use a negative binomial random variable with mean equal to $I$ and an estimated \emph{overdispersion parameter} (in R, the log-likelihood of a negative binomial variable with mean `mu` and overdispersion parameter `k` [smaller `k` means more variance] is `dnbinom(x,mu=mu,size=k,log=TRUE)`).
 
 You can assume that you know the population size $N$ and that the epidemic starts with one infected individual, zero recovereds, and $N-1$ susceptible individuals (in general, models with unknown population size *and* unknown transmission rates have severe identifiability problems).
 
@@ -158,8 +166,11 @@ MATLAB equivalent) to compute the log-likelihood.
 model_fn <- file.path(tempdir(),"sir.jags")
 m1 <- m1[m1[,"S"]>0,]
 inits <- replicate(3,list(newinf=m1[,"incidence"],
-                          beta=0.04,gamma=0.5),
+                          beta=0.04,gamma=1),
                                   simplify=FALSE)
+```
+
+```{r fit_jags_model,cache=TRUE}
 j1 <- jags(model.file="sir.jags",
            data=list(incid=m1[,"incidence"],N=100,
                      nobs=nrow(m1)),
@@ -177,11 +188,36 @@ saveRDS(j1,"data/jags_model_fit.rds")
 ### Real data!
 
 K. Dietz gives some data on a pneumonic plague outbreak in Harbin (China) in 1910/1911; the data are extracted (I think) from \cite{international_plague_conference_1911_:_mukden_report_1912}, in \cite{dietz_epidemics:_2009}.
-```{r echo=FALSE}
+```{r get_harbin,echo=FALSE}
 (harbin <- read.csv("data/Dietz_harbin_sm.csv"))
 par(las=1,bty="l")
 plot(plague_deaths~week,data=harbin)
 ```
 Dietz says he used a mean infectious period of 11 days and found an initial population size of 2985 and an $R_0$ value of 2.  Fitting $\beta$ and $N$ as parameters, using $R_0=\beta N/\gamma$, and taking $\gamma=1/11$, see if you agree (assume 100% mortality, and that death occurs at the end of the infectious period).
 
+```{r jags_harbin,cache=TRUE}
+harbin_inits <- replicate(3,list(
+                                newinf=round(harbin[,"plague_deaths"]),
+                                beta=6e-5,gamma=1/11),
+                                  simplify=FALSE)
+j2_t <- system.time(j2 <- jags(model.file="sir.jags",
+           data=list(incid=round(harbin[,"plague_deaths"]),N=3000,
+                     nobs=nrow(harbin)),
+           inits=harbin_inits,
+           n.iter=10000,DIC=FALSE,
+     parameters.to.save=c("beta","gamma","p.report"),
+     progress.bar="none"))
+```
+(This takes about 2 minutes on my laptop)
+
+
+```{r}
+xyplot(as.mcmc(j2))
+```
+
+We can convert
+```{r}
+pairs(as.matrix(as.mcmc(j2)),pch=".",gap=0,
+      col=rep(c("black","blue","red"),each=1000))
+```
 

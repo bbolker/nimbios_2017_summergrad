@@ -125,22 +125,21 @@ phenomenological & mechanistic
 \end{frame}
 
 \begin{frame}
-\frametitle{Modeling (aside)}
+\frametitle{Modeling}
 
-\small
-\begin{tabular}{llll}  
-\textbf{Time} & \textbf{Population state} & \textbf{Randomness} & \textbf{Model} \\
-    \hline  
-discrete & discrete & deterministic & *\cite{Henson+2001} \\
-discrete & discrete & stochastic & \\
-discrete & continuous & deterministic & \\
-discrete & continuous & stochastic & random walk \\
-continuous & discrete & deterministic & weird \\
-continuous & discrete & stochastic & branching process / \\
-           &          &            & cont. Markov \\
-continuous & continuous & deterministic & ODE \\
-continuous & continuous & stochastic & stochastic ODE 
-\end{tabular}
+\begin{itemize}
+\item \emph{time}: continuous or discrete
+\item \emph{state}: continuous (e.g. quantitative genetics) \\
+or discrete (e.g. Mendelian)
+\item \emph{evolution}: deterministic or stochastic
+\end{itemize}
+
+e.g. 
+\begin{itemize}
+\item ODEs: continuous-time, continuous-state, deterministic
+\item branching processes: continuous-time, discrete-state, stochastic
+\end{itemize}
+
 \end{frame}
 
 \begin{frame}
@@ -286,7 +285,7 @@ env_procobs  <-  t(apply(Nmat_proconly,1,quantile,c(0.025,0.975)))
 \frametitle{Linear model}
 \begin{columns}
 \begin{column}{6cm}
-<<echo=FALSE,fig.align='left',out.width="\\textwidth">>=
+<<lindisc1,echo=FALSE,fig.align='left',out.width="\\textwidth">>=
 par(mgp=c(2.5,0.75,0),las=1,bty="l")
 colvec <- c("red","blue")
 plot(1:nt,linN,ylim=c(-8,35),type="b",xlab="Time",lwd=2,
@@ -392,7 +391,7 @@ dsim = function(nt=20,N0=(a-b),a=6,b=1,p=1,
   }
   Nobs
 }
-nt <- 20L ## integer
+nt <- 20 ## integer
 dN <- dsim()
 nsim <- 1000
 dNdet <- numeric(20)
@@ -413,7 +412,7 @@ denv_proc  <-  t(apply(dNmat_proconly,1,quantile,c(0.025,0.975)))
 \frametitle{Hyperbolic nonlinear model}
 \begin{columns}
 \begin{column}{6cm}
-<<echo=FALSE,fig.align='left',out.width="\\textwidth",crop=TRUE>>=
+<<hypdisc1,echo=FALSE,fig.align='left',out.width="\\textwidth",crop=TRUE>>=
 par(mgp=c(2.5,0.75,0),las=1,bty="l",xpd=NA)
 colvec <- c("red","blue")
 plot(1:nt,dN,ylim=c(0,12),type="b",xlab="Time",lwd=2,
@@ -520,7 +519,7 @@ find_minimum(obj_fun,starting_params,...)
 \end{frame}
 
 \begin{frame}[fragile]
-\frametitle{Real code (using \code{for} loops)}
+\frametitle{Real code \#1 (\code{for} loops)}
 <<traj_real,results="hide">>=
 determ_fun <- function(p,nt) {
   with(as.list(p),a+b*(1:nt))
@@ -536,8 +535,27 @@ optim(fn=obj_fun,par=c(a=5,b=2,sd=1),nt=20,Nobs=linN)
 \end{frame}
 
 \begin{frame}[fragile]
-\frametitle{Real code (using \code{mle2()})}
+\frametitle{Real code \#2 (using \code{mle2()})}
 <<traj_real2,results="hide",message=FALSE>>=
+library(bbmle)
+obj_fun <- function(a,b,sd,nt,Nobs) { 
+  estimate <- determ_fun(a,b,nt)
+  ## negative log-lik. of Normal 
+  obj <- -sum(dnorm(Nobs,estimate,sd,log=TRUE))
+  return(obj)
+}
+determ_fun <- function(a,b,nt) a+b*(1:nt)
+mle2(obj_fun,
+     data=list(Nobs=linN,nt=nt),
+     start=list(a=5,b=2,sd=1.01),
+     method="Nelder-Mead")
+@
+\code{mle2()} simplifies computation of confidence intervals, likelihood profiles, etc..
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Real code \#3 (\code{mle2()} formula interface)}
+<<traj_real3,results="hide",message=FALSE>>=
 library(bbmle)
 determ_fun <- function(a,b,nt) a+b*(1:nt)
 mle2(Nobs~dnorm(determ_fun(a,b,nt),sd=sd),
@@ -545,7 +563,21 @@ mle2(Nobs~dnorm(determ_fun(a,b,nt),sd=sd),
      start=list(a=5,b=2,sd=1.01),
      method="Nelder-Mead")
 @
-\code{mle2()} simplifies computation of confidence intervals, likelihood profiles, predicted values, etc..
+Formula interface further simplifies getting predicted values, etc..
+\end{frame}
+
+\begin{frame}
+\frametitle{\code{mle2} notes}
+\begin{itemize}
+\item wrapper for \code{optim}
+\item assumes objective function is negative log-likelihood
+\item uses \code{method="BFGS"} by default (maybe switch to Nelder-Mead)
+\item unlike \code{optim}, obj. function takes parameters separately: \\
+\code{objfun(alpha,beta)} instead of \code{objfun(params)}
+\item use \code{trace=TRUE} to track parameters and obj fun value
+\item nicer accessors (\code{coef()}, \code{logLik()}, etc.: see 
+\code{methods(class="mle2")}
+\end{itemize}
 \end{frame}
 
 \begin{frame}[fragile]
@@ -654,6 +686,24 @@ segments(y.procobs[-n],y.procobs[-1],y.procobs[-n]+D,y.procobs[-1]-D,lty=2)
 points(y.procobs[-n],y.procobs[-1],pch=16,col="gray")
 par(op)
 @
+\end{frame}
+
+\begin{frame}
+\frametitle{Optimization tips/trouble-shooting}
+\begin{itemize}
+\item use sensible starting values
+  \begin{itemize}
+  \item for GA/MCMC, use values that are \emph{different} (allow exploration)
+    but \emph{not crazy} (crash/get stuck)
+  \end{itemize}
+\item Nelder-Mead is slower and more robust than BFGS
+\item test objective/mean function externally
+\item use \code{cat()} to print parameter values, see where you're
+running into trouble
+\item use constraints (\code{method="L-BFGS-B"},
+or BOBYQA from \code{nloptr} package) or transform
+parameters (e.g. fit $\log(\beta)$ rather than $\beta$)
+\end{itemize}
 \end{frame}
 
 \subsection{Gradient matching}
