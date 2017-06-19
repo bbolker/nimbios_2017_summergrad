@@ -15,3 +15,7 @@
 ## R junk
 .Rhistory
 .RData
+*_cache/
+*_files/
+cache/
+Summ*
