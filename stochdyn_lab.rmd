@@ -74,42 +74,41 @@ $$
 \text{recovery (old infectious lost)}: \psi(t) & \sim \text{Binom}(N=I(t),p=\gamma \Delta t)\\
 \end{split}
 $$
-(The $\Delta t$ isn't really necessary, but it is sometimes more convenient to have it in the equations than to rescale $\gamma$ and $\beta$ to explore the dynamical consequences of discrete time.)
+(The $\Delta t$ isn't really necessary - we will $\Delta t=1$ below - but it is sometimes more convenient to have it in the equations than to rescale $\gamma$ and $\beta$ to explore the dynamical consequences of discrete time.)
 
 **Stop and think about this model; explain it to yourself or to your neighbor.**
 
 - Remembering that the mean of a binomial random variable is $N \cdot p$, what are the expected infectious and recovery periods? What is the distribution of th e infectious period?
 - Remembering that $\exp(x) \approx 1+x$ when $x \ll 1$, what is the expected infection rate when  $I \Delta t$ is small?
-- If you know the definition of $R_0$, can you compute it for this model?  What are the conditions required for an epidemic to succeed (on average)?
+- $R_0$ can be defined as the expected number of secondary infections caused by a primary case, over the entire infectious period, in a completely susceptible population - can you compute it for this model?  What are the conditions required for an epidemic to succeed (on average)?
 
-
-An R implementation of the $t \to t+1$ mapping function: this uses the "magic" function `with()`,
+An R implementation of the $t \to t+1$ mapping function: this uses the "magic" function `with()` [so we can use the names associated with the parameter and state vectors as labels] and returns the results as a list containing a vector [to make `deSolve` happy]. This version has only process error.
 
 ```{r dynsim1}
 SIRdsim1 <- function(t,y,params) {
    g <- with(as.list(c(y,params)), {
-      p <- 1-exp(-beta*I*dt)
+      p <- 1-exp(-beta*I)
       inf <- rbinom(1,size=S,prob=p) ## pick one binomial deviate
-      recover <- rbinom(1,size=I,prob=gamma*dt)
+      recover <- rbinom(1,size=I,prob=gamma)
       c(S=S-inf,
         I=I+inf-recover,
         R=R+recover,
         incidence=inf)
    })
-   list(g,NULL)
+   list(g) ## for deSolve()
 }
 ```
 The incidence isn't really a state variable, it's an auxiliary observation, but this is a convenient way to include it in the output.
-We don't really need it yet, but it will be useful when we get to gradient matching ...
 
 You can run this with `deSolve::ode()`, using the `"iteration"` method (`ode()` is mostly intended for solving differential equations):
 ```{r}
 set.seed(101)
 library("deSolve")
-m1 <- ode(t=1:20,y=c(S=100,I=1,R=0,incidence=0),
-    func=SIRdsim1,
-    parms=c(beta=0.04,gamma=0.5,dt=1),
-    method="iteration")
+m1 <- ode(t=1:20,
+          y=c(S=100,I=1,R=0,incidence=0),
+          func=SIRdsim1,
+          parms=c(beta=0.04,gamma=0.5),
+          method="iteration")
 ```
 
 If you prefer (or if you are using MATLAB), you can write a version with a `for` loop instead.
@@ -124,7 +123,7 @@ If you prefer (or if you are using MATLAB), you can write a version with a `for`
 Create two variants of the model above:
 
 * Make a deterministic version of the model. (This is useful for comparing with the stochastic variant, and for optimizing.) Call this function `SIRdsim_determ`.
-* Add observation error to incidence (`inf`) by making it a binomial variable (in R, `rbinom(1,size=inf,prob=rptprob)`): call the function `SIRdsim_obsproc`.
+* Add observation error to incidence (`inf`) by making the observed value a binomial deviate (in R, `rbinom(1,size=inf,prob=rptprob)`): call the function `SIRdsim_obsproc`.
 
 Spend 10 minutes on these; if you get stuck, see `lab1solns.rmd`.
 
@@ -152,6 +151,8 @@ $\text{Binom}(N=S(t),p=1-\exp(-\beta I(t) \Delta t))$
 to calculate the expected $p$ for the binomial distribution
 of incidence, and the R function `dbinom()` (or a
 MATLAB equivalent) to compute the log-likelihood.
+
+## JAGS
 
 ```{r jags_model}
 model_fn <- file.path(tempdir(),"sir.jags")
