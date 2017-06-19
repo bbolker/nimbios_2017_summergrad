@@ -170,6 +170,7 @@ library(lattice)
 xyplot(as.mcmc(j1))
 densityplot(as.mcmc(j1),layout=c(2,2))
 summary(as.mcmc(j1))
+saveRDS(j1,"data/jags_model_fit.rds")
 ```
 
 ### Real data!

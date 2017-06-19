@@ -10,9 +10,9 @@
 \usepackage{color}
 \usepackage{amssymb}
 \usepackage{hyperref}
-\usepackage{bm}
 \usepackage{graphicx}
 \let\oldemph=\emph
+\newcommand{\todo}[1]{{\color{red} \bf #1}}
 \renewcommand{\emph}[1]{{\color{red} {\textbf{#1}}}}
 \newcommand{\pkglink}[1]{\href{http://cran.r-project.org/web/packages/#1}{\nolinkurl{#1}}}
 \newcommand{\rflink}[1]{\href{https://r-forge.r-project.org/projects/#1/}{\nolinkurl{#1}}}
@@ -100,7 +100,7 @@ Departments of Mathematics \& Statistics and Biology}
 
 \section{super-quick intro to Bayes}
 
-\subsection{Philosophy}
+\subsection{}
 
 \newcommand{\ub}[2]{\underbrace{#1}_{\mbox{\small #2}}}
 \begin{frame}
@@ -171,11 +171,11 @@ for(i in 1:5) {
 \end{frame}
 
 \begin{frame}
-\frametitle{priors ($P(H_i)$}
+\frametitle{priors: $P(H_i)$}
 
 \begin{itemize}
 \item usually framed as ``prior belief''
-\item controversial
+\item controversial because subjective
 \item if we set all $P(H_i)$ equal, $P(H_i|D) = P(D|H_i)/\sum P(D|H_j)$
 (\emph{scaled likelihood})
 \item can't really be swept under the rug
@@ -199,7 +199,9 @@ for(i in 1:5) {
 <<def_priorpix,echo=FALSE>>=
 tmpf <- function(a,b,N=10,minp=0,maxp=1,dp=1e-2,
                  size=15,scaled_prior=TRUE,
-                 scaled_lik=TRUE,main="",legpos="left") {
+                 scaled_lik=TRUE,main="",legpos="left",
+                 xlab="probability",ylab="probability/likelihood",
+                 xticks=TRUE) {
   pvec = seq(minp,maxp,by=dp)
   likvec = dbinom(N,size=size,prob=pvec)
   prior = dbeta(pvec,a,b) ## 2*(1-pvec)
@@ -211,9 +213,10 @@ tmpf <- function(a,b,N=10,minp=0,maxp=1,dp=1e-2,
     likvec <- likvec/(sum(likvec)*dp)
   }
   matplot(pvec,cbind(likvec,prior,post),
-          type="l",ylab="probability/likelihood",
+          type="l",xlab=xlab,ylab=ylab,
           col=c(1,2,4),lty=1,main=main,
           axes=FALSE)
+  if (xticks) axis(side=1,at=c(0,1))
   box()
   legend(legpos,
          col=c(1,2,4),lty=1,
@@ -222,72 +225,96 @@ tmpf <- function(a,b,N=10,minp=0,maxp=1,dp=1e-2,
 @
 
 \begin{frame}
-\frametitle{priors}
+\frametitle{effects of priors}
 
-<<pr1,echo=FALSE,fig.width=8,fig.height=8>>=
-par(mfrow=c(2,2))
+<<pr1,echo=FALSE,fig.width=7,fig.height=7>>=
+par(mfrow=c(2,2),mgp=c(1,0,0),mar=c(2.5,2.5,1,1))
 tmpf(1,1,main="flat prior")
-tmpf(0.01,10,main=expression(prior %->% 0))
-tmpf(10,0.01,main=expression(prior %->% 0.1))
-tmpf(11,6,main="prior agrees with data")
+tmpf(0.01,10,main=expression("prior prob" %->% 0))
+tmpf(10,0.01,main=expression("prior prob" %->% 1))
+tmpf(11,6,main="prior = likelihood")
 @ 
 \end{frame}
 
-\subsection{Markov chain Monte Carlo}
+\section{Markov chain Monte Carlo}
+\subsection{}
 
 \begin{frame}
 \frametitle{Markov chain Monte Carlo}
-Very general way of calculating Bayesian \emph{posterior densities}
+\begin{itemize}
+\item \emph{general} method for sampling posterior probability densities
+\item construct a Markov chain whose stationary density equals the
+  desired posterior probability density
+\item avoids computation of Bayes' rule denominator
+($\iint P(\bm \theta) \, d \bm\theta$)
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{you won't believe these two MCMC tricks}
 \begin{description}
-\item[Gibbs sampling] exploit conditioning: 
+\item[Gibbs sampling] exploit conditioning, sample parameters one at a time
+\item[Rejection sampling] (Metropolis-Hastings): pick new values of parameters at random, then pick a random number to decide whether to keep them
+\end{description}
+\end{frame}
+
+\begin{frame}
+\frametitle{Gibbs sampling}
+\newcommand{\prob}{\textrm{Prob}}
+Because $\prob(A|B) = \prob(A,B)/\prob(B)$,
+%% (x|y) * (y|x) = (x,y)/(x) * (x,y)/(y)
+%% (x,y,z)/(x,y) * (x,y,z)/(x,z) * (x,y,z)/(y,z)
+we can say
 $$
-\text{Prob}(A,B,C) \propto \text{Prob}(A|B,C) \cdot \text{Prob}(B|A,C) \cdot \text{Prob}(C|A,B)
+\text{Prob}(A,B,C,\ldots Z) \propto \text{Prob}(A|B,\ldots,Z) 
+\cdot \text{Prob}(B|C,\ldots,Z) \cdot \ldots \cdot \prob(Z)
 $$
 This means that we can sample the conditional probabilities \emph{sequentially} and get the right answer.
-\item[Rejection sampling] (Metropolis-Hastings): we can pick new values of parameters at random, then pick a random number to decide whether to keep them. If our rule satisfies
+
+\todo{picture of sampling}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Metropolis-Hastings}
+Jump, evaluate (prior $\times$ likelihood), decide whether to accept
 \begin{equation*}
 \frac{\text{Prob}(A)}{\text{Prob}(B)} = %
 \frac{P(\text{jump } B \to A) P(\text{accept }A|B)}%
 {P(\text{jump } A \to B) P(\text{accept }B|A)}
 \label{eq:mcmccrit}
 \end{equation*}
-then in the long run our chain will converge to the right distribution
-\end{description}
-\end{frame}
-
-\begin{frame}
-\frametitle{more on Gibbs}
-\end{frame}
-
-\begin{frame}
-\frametitle{more on Metropolis-Hastings}
-\end{frame}
-
-\begin{frame}
-\frametitle{Black boxes/magic}
-Given enough time and thought, you can construct your
-own Gibbs and Metropolis-Hastings samplers.  Alternatively,
-you can use a powerful but opaque tool called BUGS (Bayesian Inference Using Gibbs Sampling), which exists in several incarnations (\code{WinBUGS}, \code{OpenBUGS}, \code{JAGS}).
-\pause
-
-BUGS allows you to specify a model in a specialized language (that looks a lot like R); it then constructs samplers for you and runs a Markov chain.  It can be accessed via R (\code{R2jags} package) or MATLAB (\url{https://code.google.com/p/matbugs/}).
-
-\end{frame}
-
-
-\subsection{General intro}
-\begin{frame}
-\frametitle{State space models}
+In the long run our chain will converge to the right distribution
 \begin{itemize}
-\item models that address the fundamental problem that
-the probability of a set of observations depends on the
-\emph{unobserved} true values
-\item somehow have to deal with (integrate over?) the range of possible values of the \emph{latent variables}
-\item problems are generally very high-dimensional (many unobserved values), so brute force fails: \\ stochastic (\emph{Monte Carlo}) integration
-\item exploit conditioning: if we know $N(t)$, $N(t-1)$ and $N(t)$ are \emph{conditionally} independent
+\item \emph{candidate distribution}: anything sensible
+\item \emph{acceptance rule}: $$P(\textrm{accept} \theta_2) =
+\textrm{max}\left(1,
+\frac{\textrm{Pr}(\theta_2) L(\theta_2)}{\textrm{Pr}(\theta_1) L(\theta_1)}
+\right)$$
+i.e. ``always accept if $\theta_2$ better: sometimes if $\theta_2$ worse''
 \end{itemize}
 \end{frame}
 
+\begin{frame}
+\frametitle{Magic black boxes}
+\begin{itemize}
+\item Can construct your own, customized samplers \citep{bolk+03c}
+\item Use BUGS (Bayesian Inference Using Gibbs Sampling) language (\code{WinBUGS}, \code{OpenBUGS}, \code{JAGS}, \code{NIMBLE})
+\item interfaces from R (\code{R2jags} package) or MATLAB (\url{https://github.com/msteyvers/matjags}).
+\end{itemize}
+\end{frame}
+
+\section{State-space models}
+\subsection{}
+\begin{frame}
+\frametitle{State space models}
+\begin{itemize}
+\item address fundamental problem: prob(observations) depends on \emph{unobserved} true values
+\item have to deal with/integrate over all possible values (\emph{latent variables})
+\item very high-dimensional: brute force fails
+\item use the previous two tricks
+\end{itemize}
+\end{frame}
 
 \begin{frame}[fragile]
 \frametitle{BUGS code for the logistic function}
@@ -302,6 +329,7 @@ model <- function() {
      o[i] ~ dnorm(t[i],tau.obs)
   }
   r ~ dunif(0.1,maxr) ## priors ...
+  ## rate and scale of gamma    
   K ~ dgamma(0.005,0.005)
   tau.obs ~ dgamma(0.005,0.005)
   tau.proc ~ dgamma(0.005,0.005)
@@ -314,19 +342,30 @@ model <- function() {
 \begin{frame}
   \frametitle{Dependency structure for logistic model}
   \begin{center}
-  \includegraphics[height=1.75in]{pix/dynam-DAG}
+  \includegraphics[height=1.85in]{pix/dynam-DAG}
   \end{center}
 \end{frame}
 
+\begin{frame}[fragile]
+\frametitle{BUGS vs R}
+\begin{itemize}
+\item BUGS code is not sequential (!)
+\item BUGS is not vectorized (need \code{for} loops)
+\item BUGS: \verb+~+ is ``distributed as'' (``stochastic node''),
+\verb+<-+ is assignment (``logical node'')
+\item different distribution names and parameterizations
+(e.g. \code{dnorm(mean,prec)} for Normal, \code{dbin(size,prob)}
+for binomial): see \cite{lebauer_translating_2013}
+\end{itemize}
+\end{frame}
   
 \begin{frame}
-\frametitle{Running BUGS}
+\frametitle{Running JAGS}
 \begin{itemize}
-  \item \emph{Good news}: BUGS code is (relatively) intuitive
+  \item \emph{Good news}: JAGS code is (relatively) intuitive
   \item \emph{Bad news}:
     \begin{itemize}
     \item Debugging is hard
-    \item Different parameterizations
     \item Need to figure out how long to run chains \\
       (convergence diagnostics)
     \item Poor mixing
@@ -335,7 +374,79 @@ model <- function() {
   \end{itemize}
 \end{frame}
 
-\subsection{Other approaches}
+\begin{frame}
+\frametitle{Running JAGS (details)}
+\begin{itemize}
+\item specify model and priors
+\item get model to compile
+\item run multiple chains
+\item assess convergence
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{Troubleshooting JAGS}
+\begin{itemize}
+\item simplify model
+\item specify initial values explicitly
+\item narrow priors and/or fix some parameters
+\item run longer and thin
+\end{itemize}
+\end{frame}
+
+<<getjags,echo=FALSE,message=FALSE>>=
+library(R2jags)
+library(coda)
+library(lattice)
+jagsout <- readRDS("data/jags_model_fit.rds")
+@
+
+\begin{frame}[fragile]
+\frametitle{Diagnostics example}
+\emph{trace plots}: should look like white noise
+<<jagstrace,message=FALSE>>=
+library(R2jags); library(coda); library(lattice)
+xyplot(as.mcmc(jagsout))
+@ 
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Diagnostics example}
+\emph{Gelman-Rubin statistic}: want $\hat R < 1.2$
+<<jagsdiag>>=
+gelman.diag(as.mcmc(jagsout))
+@ 
+\end{frame}
+
+\begin{frame}
+\frametitle{Density plots}
+<<jagsens,echo=FALSE,fig.width=8,fig.height=7>>=
+densityplot(as.mcmc(jagsout),layout=c(2,2),asp="fill")
+@ 
+\end{frame}
+
+
+\begin{frame}[fragile]
+\frametitle{Summary example}
+\small
+<<getjags0,results="hide",message=FALSE>>=
+summary(as.mcmc(jagsout))
+@
+<<nojags,echo=FALSE>>=
+jout <- capture.output(summary(as.mcmc(jagsout)))
+@ 
+<<printjags,echo=FALSE>>=
+cat(jout[10:15],sep="\n")
+@ 
+\end{frame}
+
+\begin{frame}
+\frametitle{The problem with MCMC (\href{https://xkcd.com/303/}{xkcd})}
+\includegraphics[height=0.7\textheight]{pix/xkcd_MCMC.png}
+\end{frame}
+
+\section{Other approaches to nonlinear dynamical fitting}
+\subsection{}
 \begin{frame}
 \frametitle{Frequentist methods}
 \begin{itemize}
@@ -353,8 +464,10 @@ some classical
 
 \begin{frame}
 \frametitle{Continuous-time models}
-I know this is possible via particle filtering
-methods, but I've never tried it \ldots
+\begin{itemize}
+\item Particle methods
+\item Approximate Bayesian computation
+\end{itemize}
 
 \end{frame}
 

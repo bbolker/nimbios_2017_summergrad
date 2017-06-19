@@ -496,6 +496,7 @@ is sum of log-likelihood
 \item i.e. 
 \item for Normally distributed, equal-variance error, maximum likelihood estimation equivalent to least-squares
 \item Very common for ODE models, e.g. \cite{GaniLeach2001,vanVeen+2005}
+\item Brute force can be slow/unstable: use \emph{sensitivity equations} \cite{raue_lessons_2013}
 \end{itemize}
 \end{frame}
 
