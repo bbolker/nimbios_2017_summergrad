@@ -496,7 +496,7 @@ independent at each observation, overall log-likelihood
 is sum of log-likelihood
 \item for Normally distributed, equal-variance error, maximum likelihood estimation equivalent to least-squares
 \item Very common for ODE models, e.g. \cite{GaniLeach2001,vanVeen+2005}
-\item Brute force can be slow/unstable: use \emph{sensitivity equations} \cite{raue_lessons_2013}
+\item Brute force can be slow/unstable: use \emph{sensitivity equations} \citep{raue_lessons_2013}
 \end{itemize}
 \end{frame}
 
@@ -564,43 +564,22 @@ mle2(Nobs~dnorm(determ_fun(a,b,nt),sd=sd),
      start=list(a=5,b=2,sd=1.01),
      method="Nelder-Mead")
 @
-Formula interface further simplifies getting predicted values, etc..
+Formula interface further simplifies getting predicted values, etc.
+(but may make debugging harder!)
 \end{frame}
 
 \begin{frame}
 \frametitle{\code{mle2} notes}
 \begin{itemize}
 \item wrapper for \code{optim}
-\item assumes objective function is negative log-likelihood
+\item \emph{assumes} objective function is negative log-likelihood
 \item uses \code{method="BFGS"} by default (maybe switch to Nelder-Mead)
 \item unlike \code{optim}, obj. function takes parameters separately: \\
 \code{objfun(alpha,beta)} instead of \code{objfun(params)}
 \item use \code{trace=TRUE} to track parameters and obj fun value
 \item nicer accessors (\code{coef()}, \code{logLik()}, etc.: see 
-\code{methods(class="mle2")}
+\code{methods(class="mle2")})
 \end{itemize}
-\end{frame}
-
-\begin{frame}[fragile]
-\frametitle{Real code (using linear regression, \code{lm()})}
-\begin{columns}
-\begin{column}{6cm}
-<<lin_ggplot2,echo=FALSE,fig.align='left',out.width="\\textwidth">>=
-linDF <- data.frame(Time=1:nt,
-                    Nobs=linN)
-ggplot(linDF,aes(x=Time,y=Nobs))+
-  geom_point()+geom_line()+
-  geom_smooth(method="lm")
-@
-\end{column}
-\begin{column}{6cm}
-<<lmex,results="hide",tidy=FALSE>>=
-linDF <- data.frame(Time=1:nt,
-                    Nobs=linN)
-lm(Nobs~Time,data=linDF)
-@
-\end{column}
-\end{columns}
 \end{frame}
 
 <<procobssim1,echo=FALSE>>=
@@ -671,7 +650,8 @@ par(cex=1.5,mar=c(4,4,0,1)+0.1,
   mgp=c(2.5,0.75,0),las=1,bty="l",
   mfrow=c(1,2))
 ## N vs t
-plot(tvec,y.procobs,xlab="Time",ylab="N(t)",ylim=c(0,15))
+plot(tvec,y.procobs,xlab="Time",ylab="N(t)",ylim=c(0,15),
+     main="observation")
 with(as.list(coef(m.shoot)),curve(K/(1+(K/n0-1)*exp(-r*(x-t0))),add=TRUE))
 y.pred  <-  with(as.list(coef(m.shoot)),K/(1+(K/n0-1)*exp(-r*(tvec-t0))))
 segments(tvec,y.procobs,tvec,y.pred,lty=2)
@@ -681,7 +661,8 @@ points(tvec,y.procobs,pch=16,col="gray")
 ## FIXME: not sure this is really an improvement
 ## ignore MASS:eqscplot
 plot(y.procobs[-n],y.procobs[-1],xlab="N(t)",ylab="N(t+1)",
-         xlim=c(0,15),ylim=c(0,15))
+         xlim=c(0,15),ylim=c(0,15),
+     main="step-ahead")
 with(as.list(coef(m.shoot)),curve(K/(1+(K/x-1)*exp(-r*dt)),add=TRUE))
 segments(y.procobs[-n],y.procobs[-1],y.procobs[-n]+D,y.procobs[-1]-D,lty=2)
 points(y.procobs[-n],y.procobs[-1],pch=16,col="gray")

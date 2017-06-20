@@ -240,6 +240,8 @@ crazy (we just have to assume proc error $\ll$ obs error).
 
 If we know the initial states (e.g. assume $I(0)=1$, $S(0)=N-1$, $R(0)=0$), and all of the incidence ($\phi$) and recovery ($\psi) values, we can recover the complete sequence of $S$ and $I$ (and hence compute all likelihoods) via $S=N-\textrm{cumsum}(\phi)$, $I=\textrm{cumsum}(\phi)-\textrm{cumsum}(\psi)$. Then we can compute the probabilities of infection and recovery, and then compute binomial negative log-likelihoods.
 
+(Ignore warnings ahead ...)
+
 ```{r stepahead}
 stepahead <- function(beta,gamma,incidence,recover,N=100) {
     ## hacks to make sure sum(recovery) == sum(incidence),
@@ -264,7 +266,7 @@ stepahead <- function(beta,gamma,incidence,recover,N=100) {
 }
 ```
 
-```{r gfit,results="hide"}
+```{r gfit,results="hide",warning=FALSE}
 ## check:
 stepahead(beta=4,gamma=1,
           incidence=m1_obsproc[,"incidence"],
@@ -286,9 +288,16 @@ confint(gfit,method="quad")
 ## State-space models in JAGS
 
 
+Here's the JAGS definition - looks a lot like our previous models:
+
 ```{r jags_file,echo=FALSE}
 cat(scan(file="sir.jags",what="character",sep="\n"),sep="\n")
 ```
+
+You should almost always run multiple MCMC chains.
+For starting values, you can make a list of lists of starting values
+or a function that returns a (possibly randomized) list of starting values.
+(Relying on JAGS to pick starting values is fragile.)
 
 Make three *identical* lists containing starting values for
 $\beta$, $\gamma$, and incidence:
@@ -301,6 +310,7 @@ inits <- replicate(3,list(newinf=incid,
                    simplify=FALSE)
 ```
 
+Fit the model (make sure `sir.jags` is in your *working directory*):
 ```{r fit_jags_model,cache=TRUE}
 fn <- "data/jags_model_fit.rds"
 if (!file.exists(fn)) {
@@ -315,11 +325,28 @@ if (!file.exists(fn)) {
 } else {
     j1 <- readRDS(fn)
 }
+```
+
+The object that `jags` returns is complicated. `summary()` returns a bunch of information, including the mean and SD, quantiles, R-hat, and effective sample size:
+
+```{r sum1}
+summary(j1)
+```
+
+Note bad R-hat and eff sample size ...
+`"rjags"` objects have a `plot()` method, but I don't like it (try it!)
+Instead, we can convert to an `"mcmc"` object with `as.mcmc()` and look at trace pltos:
+
+```{r diags}
 library(coda)
 library(lattice)
 xyplot(as.mcmc(j1))
+```
+
+Or density plots:
+
+```{r densityplot}
 densityplot(as.mcmc(j1),layout=c(2,2))
-summary(as.mcmc(j1))
 ```
 
 ### Real data!
@@ -336,7 +363,7 @@ Dietz says he used a mean infectious period of 11 days and found an initial popu
 harbin_inits <- replicate(3,list(
                                 newinf=round(harbin[,"plague_deaths"]),
                                 beta=6e-5,gamma=1/11),
-                                  simplify=FALSE)
+                          simplify=FALSE)
 j2_t <- system.time(j2 <- jags(model.file="sir.jags",
            data=list(incid=round(harbin[,"plague_deaths"]),N=3000,
                      nobs=nrow(harbin)),

@@ -303,7 +303,7 @@ i.e. ``always accept if $\theta_2$ better: sometimes if $\theta_2$ worse''
 \begin{itemize}
 \item Can construct your own, customized samplers \citep{bolk+03c}
 \item Use BUGS (Bayesian Inference Using Gibbs Sampling) language (\code{WinBUGS}, \code{OpenBUGS}, \code{JAGS}, \code{NIMBLE})
-\item interfaces from R (\href{\code{R2jags} package}{https://CRAN.R-project.org/package=R2jags}) or MATLAB (\url{https://github.com/msteyvers/matjags}).
+\item interfaces from R (\href{https://CRAN.R-project.org/package=R2jags}{\code{R2jags} package}) or MATLAB (\url{https://github.com/msteyvers/matjags}).
 \end{itemize}
 \end{frame}
 
@@ -407,7 +407,7 @@ for binomial): see \cite{lebauer_translating_2013}
 \frametitle{Speeding up MCMC}
 \begin{itemize}
 \item reparameterize
-\item try Hamiltonian MC \cite{carpenter_stan_2016}
+\item try Hamiltonian MC \citep{carpenter_stan_2016}
 \item block (correlated) updates to some parameters
 \item narrow priors and/or fix some parameters
 \end{itemize}
@@ -436,6 +436,7 @@ xyplot(as.mcmc(jagsout))
 <<jagsdiag>>=
 gelman.diag(as.mcmc(jagsout))
 @ 
+Also look at \emph{effective sample size}, \code{n.eff} in some output
 \end{frame}
 
 \begin{frame}
@@ -457,6 +458,21 @@ jout <- capture.output(summary(as.mcmc(jagsout)))
 @ 
 <<printjags,echo=FALSE>>=
 cat(jout[10:15],sep="\n")
+@ 
+\end{frame}
+
+\begin{frame}
+\frametitle{run for $10^5$ steps \ldots}
+<<get_long,echo=FALSE>>=
+j1_long <- readRDS("data/j1_long.rds")
+xyplot(as.mcmc(j1_long))
+@ 
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{summary, $10^5$ steps}
+<<sum_long,echo=FALSE>>=
+print(j1_long$BUGSoutput,digits=2)
 @ 
 \end{frame}
 
@@ -491,9 +507,9 @@ cat(jout[10:15],sep="\n")
 \begin{frame}
 \frametitle{advances in MCMC}
 \begin{itemize}
-\item new toolboxes: NIMBLE \cite{li_fitting_2017,de_valpine_programming_2017}, PyMC
-\item Hamiltonian Monte Carlo: Stan \cite{carpenter_stan_2016}
-\item variational Bayes, expectation-propagation \ldots \cite{gelman_bayesian_2013}
+\item new toolboxes: NIMBLE \citep{li_fitting_2017,de_valpine_programming_2017}, PyMC
+\item Hamiltonian Monte Carlo: Stan \citep{carpenter_stan_2016}
+\item variational Bayes, expectation-propagation \ldots \citep{gelman_bayesian_2013}
 \end{itemize}
 \end{frame}
 
