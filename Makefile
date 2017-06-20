@@ -14,7 +14,7 @@
 	pdflatex --interaction=nonstopmode $*
 
 clean:
-	rm -f *.log *.aux *.md *.out texput.log
+	rm -f *.log *.aux *.md *.out *.snm *.bbl *.nav *.toc *.blg *.vrb texput.log
 
 numpy_ex.html: README.rst trans_ex.py
 	python3 -c "import trans_ex; trans_ex.trans_examples('README.rst','numpy_ex.md')"

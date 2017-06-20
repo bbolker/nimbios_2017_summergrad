@@ -2,6 +2,10 @@
 title: "Parameter estimation for stochastic dynamic models: lab"
 author: "Ben Bolker"
 date: "`r Sys.time()`"
+output:
+ html_document:
+    code_folding: hide
+bibliography: "stochdyn.bib"
 ---
 
 <style>
@@ -19,6 +23,13 @@ date: "`r Sys.time()`"
     transform:translate(-125%);
     font-size: inherit !important;
   }
+
+<!--  https://stackoverflow.com/questions/34259171/how-can-i-implement-a-spoiler-quote-with-just-css -->
+.spoiler, .spoiler > * { transition: color 0.5s, opacity 0.5s }
+.spoiler:not(:hover) { color: transparent }
+.spoiler:not(:hover) > * { opacity: 0 }
+/* fix weird transitions on Chrome: */
+blockquote, blockquote > *:not(a) { color: black }
 </style>
   
 ```{r setup,echo=FALSE,message=FALSE}
@@ -51,10 +62,11 @@ Licensed under the
 Please share \& remix noncommercially, mentioning its origin.
 
 ```{r pkgs}
-library(lattice)
-library(R2jags)
-library(coda)
-library(deSolve)
+library(R2jags)   ## R interface to JAGS
+library(coda)     ## Bayesian diagnostics
+library(deSolve)  ## ODE and discrete-model solution
+library(bbmle)
+library(lattice)  ## graphs: 'recommended' (comes with R)
 ```
 
 ## Simulation
@@ -62,26 +74,28 @@ library(deSolve)
 It's always a good idea to practice estimation techniques on simulated data before trying them on real data.
 
 - If you can't get the right answer when you know what it is, in clean data where you know exactly what's going on, you're doomed.
-- You can explore what kind of precision you should be able to get in a real situation with a given amount/noisiness of data, and diagnose whether problems you are having might be related to lack of data or are something more fundamental.
-- You can quantify important characteristics of your estimation technique (bias, mean squared error, coverage)
-- You can evaluate the robustness of your estimation method by trying it with simulated data that do *not* match the theoretical model underlying the estimator
+- Allows you to:
+     - explore what kind of precision you should be able to get in a real situation with a given amount/noisiness of data (formally, this is *power analysis*; e.g. see chapter 5 of @Bolker2008)
+	 - diagnose whether your problems will be solved by more data or are more fundamental (e.g. *identifiability problems*)
+     - quantify properties of your estimation technique (bias, mean squared error, coverage)
+     -  evaluate the robustness of your estimation method by trying it with simulated data that do *not* exactly match the theoretical model underlying the estimator
 
 A reasonable first stochastic model for an epidemic:
 
 $$
 \begin{split}
-\text{incidence (new infectious)}: \phi(t) & \sim \text{Binom}(N=S(t),p=1-\exp(-\beta I(t)/N \Delta t)) \\
-\text{recovery (old infectious lost)}: \psi(t) & \sim \text{Binom}(N=I(t),p=1-\exp(-\gamma \Delta t))\\
+\text{incidence (new infectious)}: \phi(t) & \sim \text{Binom}(N=S(t),p=1-\exp(-\beta I(t)/N \cdot \Delta t)) \\
+\text{recovery (old infectious lost)}: \psi(t) & \sim \text{Binom}(N=I(t),p=1-\exp(-\gamma \cdot \Delta t))\\
 \end{split}
 $$
 
-- the $1-\exp(-h \Delta t)$ transformation is a convenient way of turning a rate (or *hazard*) $h$ into a probability: this is convenient because it means we can use rates $>1$ in a discrete-time model without things going crazy
+- the $1-\exp(-h \Delta t)$ transformation turns a rate (specifically a *hazard*: $P(\textrm{event occurs in } \{t,t+dt\}|\textrm{event hasn't happened yet})/dt$) $h$ into a probability: this means we can use rates $>1$ in a discrete-time model without things going crazy
 - the $\Delta t$ isn't really necessary - we will set $\Delta t=1$ below - but it is sometimes more convenient to have it in the equations than to rescale $\gamma$ and $\beta$ to explore the dynamical consequences of discrete time.
 - similarly, scaling infection as $I/N$ is unnecessary in a constant-population model (we could just rescale $\beta$) but it makes $\beta$ a little easier to interpret
 
 **Stop: think about this model; explain it to yourself or to your neighbor.**
 
-- Remembering that the mean of a binomial random variable is $N \cdot p$, what are the expected infectious and recovery periods? What is the distribution of th e infectious period?
+- Remembering that the mean of a binomial random variable is $N \cdot p$, what are the expected infectious and recovery periods? What is the distribution of the infectious period?
 - Remembering that $\exp(x) \approx 1+x$ when $x \ll 1$, what is the expected infection rate when  $I \Delta t$ is small?
 - $R_0$ can be defined as the expected number of secondary infections caused by a primary case, over the entire infectious period, in a completely susceptible population - can you compute it for this model?  What are the conditions required for an epidemic to succeed (on average)?
 
@@ -93,62 +107,136 @@ An R implementation of the $t \to t+1$ mapping function.
 ```{r dynsim1}
 SIRdsim1 <- function(t,y,params) {
    g <- with(as.list(c(y,params)), {
-      p <- 1-exp(-beta*I/N)
-      gg <- 1-exp(-gamma)
-      newinf <- rbinom(1,size=S,prob=p) ## pick one binomial deviate
-      recover <- rbinom(1,size=I,prob=gg)
-      c(S=S-newinf,
-        I=I+newinf-recover,
-        R=R+recover,
-        incidence=newinf)
+       prob.inf <- 1-exp(-beta*I/N)
+       prob.rec <- 1-exp(-gamma)
+       newinf <- rbinom(1,size=S,prob=prob.inf) ## pick one binomial deviate
+       recover <- rbinom(1,size=I,prob=prob.rec)
+       c(S=S-newinf,
+         I=I+newinf-recover,
+         R=R+recover,
+         incidence=newinf,
+         recover=recover)
    })
    list(g) ## for deSolve()
 }
 ```
-The incidence isn't really a state variable, it's an auxiliary observation, but this is a convenient way to include it in the output.
+The incidence and recovery aren't state variables, they're auxiliary observations, but this is a convenient way to include them in the output.
 
 You can run this with `deSolve::ode()`, using the `"iteration"` method (`ode()` is mostly intended for solving differential equations):
-```{r}
-set.seed(101)
-library("deSolve")
+```{r runsim1}
+set.seed(101)   ## set state of random number generator
 m1 <- ode(t=1:20,
-          y=c(S=99,I=1,R=0,incidence=0),
+          ## starting values and parameters must be *named vectors*
+          y=c(S=99,I=1,R=0,incidence=0,recovery=0),
+          parms=c(beta=2.0,gamma=1.0,N=100),
           func=SIRdsim1,
-          parms=c(beta=4.0,gamma=1.0,N=100),
           method="iteration")
 ```
 
 If you prefer (or if you are using MATLAB), you can write a version with a `for` loop instead.
 
+For convenience, write a plotting function for the results:
+```{r plotfun}
+plotfun <- function(x) {
+    Y <- x[,-1] ## all state variables (omit time)
+    matplot(x[,"time"],Y,type="l",lty=1,
+            xlab="time",ylab="number")
+    legend("topright",
+           colnames(Y),
+           lty=1,
+           col=1:ncol(Y))
+}
+```
+
 **Stop: run this model (pick a set of sensible parameters, e.g. that make $R_0=4$ and $r=\beta -\gamma$ not too large) and examine the output.**
 
 - Convince yourself that you understand the model by adjusting the parameters to make the epidemic die out (i.e. $R_0<1$).
-- If you use R: use `head()`, `tail()`, and `plot()` to examine the output. (For a more compact version of the plot, try `matplot(m1[,1],m1[,-1],type="l",log="y")`.)
+- If you use R: use `head()`, `tail()`, `plot()`, and `plotfun()` from above to examine the output.
 
 *Note that `plot(ode)` messes with your graphics settings.  To restore the settings to a full-page plot, either (1) use `par(mfrow=c(1,1))` or (2) use `dev.off()` (or click a button) close your graphics window (the next plot you create will open a new window with fresh settings).*
 
-**Stop. Make a variant of the model above:**
+### Model variants
 
-- Add observation error to incidence (`newinf`) by making the observed value a binomial deviate (in R, `rbinom(1,size=newinf,prob=rptprob)`): call the function `SIRdsim_obsproc`.
-- (optional) Make a deterministic version of the function. (This is useful for comparing with the stochastic variant, and for optimizing.) Call this function `SIRdsim_determ`.
+$$
+%\tiny #2 doesn't work??
+\newcommand{\tsub}[2]{#1_{{\textrm{#2}}}}
+\newcommand{\phiobs}{\tsub{\phi}{obs}}
+\newcommand{\psiobs}{\tsub{\psi}{obs}}
+\newcommand{\pobs}{\tsub{p}{obs}}
+\begin{split}
+\text{observed incidence}: \phiobs(t) & \sim \text{Binom}(N=\phi(t),p=\pobs) \\
+\text{observed recovery}: \psiobs(t) & \sim \text{Binom}(N=\psi(t),p=\pobs)
+\end{split}
+$$
 
-Spend $\approx 10$ minutes on these; if you get stuck, see `lab_solns.R`.
+- Add observation error to incidence and recovery by making the observed value a binomial deviate (in R, `rbinom(1,size,prob)`). (Out of laziness, I'm assuming the reporting probabilities are the same for incidence and recovery.) Call the function `SIRdsim_obsproc`.
+- Make a deterministic version of the function. (This is useful for comparing with the stochastic variant, and for optimizing.) Call this function `SIRdsim_determ`.
 
 ## Trajectory matching (shooting)
 
 Implement a trajectory-matching solution to estimate
 the parameters of the model.
-- You can fit either to *prevalence*, the number of infected individuals present (i.e., fit the model-predicted $I$ to the observed $I$). You can either assume the errors are normally distributed, or that the observed $I$ value is a Poisson random variable with mean equal to the true value of $I$ (R function `dpois()`). If this is too easy, use a negative binomial random variable with mean equal to $I$ and an estimated \emph{overdispersion parameter} (in R, the log-likelihood of a negative binomial variable with mean `mu` and overdispersion parameter `k` [smaller `k` means more variance] is `dnbinom(x,mu=mu,size=k,log=TRUE)`).
 
-You can assume that you know the population size $N$ and that the epidemic starts with one infected individual, zero recovereds, and $N-1$ susceptible individuals (in general, models with unknown population size *and* unknown transmission rates have severe identifiability problems).
+```{r}
+source("lab_solns.R")
+```
 
-**Extra challenge**: simulate the model and estimate the parameters many times to 
-evaluate the bias (the difference between the mean estimates and the true values) and the variance among the estimates. (The sum of $\text{bias}^2+\text{variance}$ is called the *mean square error*, and is a summary of the quality of the estimator.)
-For even more challenge, compute the *coverage* (the
-fraction of the time that the confidence intervals include the true value of the parameter.  The easiest way to get confidence intervals is to use `mle2()` to estimate the parameters: then `confint(fitted_model)` will automatically give you parameters (you may want to use `method="quad"` to stop `mle2()` from computing more accurate, but computationally intensive, profile confidence intervals).
+- Fit to incidence, i.e. try to match the model-predicted $\phi$ to the observed $\phiobs$)
+    - write a function `determfun(parms,nobs=20,N=100)` that takes a named parameter vector `[beta gamma]` and returns just the vector of incidences
+    - Assume that the observed $\phi$ value is a Poisson random variable with mean equal to the value returned by `determfun()` (use the R function `dpois()`).
+	- assume that you know the population size $N$ (100 in this case) and that the epidemic starts with one infected individual, zero recovereds, and $N-1$ susceptible individuals (in general, models with unknown population size *and* unknown transmission rates have severe identifiability problems).
+    - remember you need to specify `start` as a list (containing `beta` and `gamma`) and `data` as a list (containing an incidence vector)
+	- use `method="Nelder-Mead"`
+
+```{r tfit}
+incid <- m1_obsproc[,"incidence"]
+tfit <- mle2(minuslogl=incidence~dpois(determfun(c(beta=beta,gamma=gamma))),
+             data=list(incidence=m1_obsproc[,"incidence"]),
+             ## trace=TRUE,
+             start=list(beta=4,gamma=1),
+             method="Nelder-Mead")
+```
+
+```{r liksurf,echo=FALSE,cache=TRUE}
+objfun <- function(parms) {
+    exp.inc <- determfun(setNames(parms,c("beta","gamma")))
+    return(-sum(dpois(incid,exp.inc,log=TRUE)))
+}
+library(emdbook)
+cc <- curve3d(objfun(c(beta=x,gamma=10^y)),
+              sys3d="none",
+              xlim=c(1.1,2.2),
+              ylim=c(log10(0.1),log10(50)))
+```
+
+<blockquote class="spoiler">
+**Problem**: crazy estimates (true values were $\beta=2$, $\gamma=1$)?
+```{r surf,message=FALSE,echo=FALSE}
+library(viridis)
+par(las=1)
+with(cc,image(x,y,log(z-min(z)+0.0001),col=viridis_pal()(40),
+              xlab="beta",ylab="log10(gamma)"))
+points(2,0,pch=16,cex=2)
+```
+But $R_0$ (= $(1-exp(-\beta I_0/N)) N/(1-exp(-\gamma))$) isn't *that* far off:
+```{r R0}
+R0fun <- function(beta,gamma,N=100,I0=1) {
+    return((1-exp(-beta*I0/N))*N/(1-exp(-gamma)))
+}
+```
+True value `r R0fun(2,1)` vs. estimated `r R0fun(coef(tfit)[1],coef(tfit)[2])`
+
+</blockquote>
 
 ## Gradient matching (one-step-ahead)
 
+For the simpler forms of gradient matching you
+need to be observe the *full state of the system without error*
+(but see @Ellner+2002)
+- for a model with a scalar state like the logistic, this is not
+crazy (we just have to assume proc error $\ll$ obs error).
+- this would also work for the [Reed-Frost model](https://en.wikipedia.org/wiki/Reed%E2%80%93Frost_model), where infectious individuals are assumed to recover after one time step.
+- for our example, we need to assume we can observe both incidence ($S \to I$) and recovery ($I \to R$) transitions.
 Implement a gradient-matching solution to estimate
 the parameters of the model.  Given that you know
 the starting value of $S$ ($N-1$), you can update it
@@ -160,7 +248,7 @@ to calculate the expected $p$ for the binomial distribution
 of incidence, and the R function `dbinom()` (or a
 MATLAB equivalent) to compute the log-likelihood.
 
-## JAGS
+## State-space models in JAGS
 
 ```{r jags_model}
 model_fn <- file.path(tempdir(),"sir.jags")
@@ -221,3 +309,16 @@ pairs(as.matrix(as.mcmc(j2)),pch=".",gap=0,
       col=rep(c("black","blue","red"),each=1000))
 ```
 
+## In conclusion ...
+
+From [Know Your Meme](http://knowyourmeme.com/photos/572078-how-to-draw-an-owl):
+
+![](pix/draw_the_owl.jpg)
+
+---
+From Neal Stephenson's [*Cryptonomicon*](http://cnqzu.com/library/Anarchy%20Folder/Fiction/Stephenson,_Neal/Stephenson,_Neal_-_Cryptonomicon/Neal%20Stephenson%20-%20Cryptonomicon%20v2%20(HTML,%20Fully%20Proofed)/slide58.html):
+
+> ... that is what pisses Randy off, and has always pissed him off, about dancing lessons. Any moron can learn to trudge through the basic steps. That takes all of half an hour. But when that half-hour is over, dancing instructors always expect you’ll take flight and go through one of those miraculous time lapse transitions that happen only in Broadway musicals and begin dancing brilliantly. Randy supposes that people who are lousy at math feel the same way: the instructor writes a few simple equations on the board, and ten minutes later he’s deriving the speed of light in a vacuum.
+
+
+## References
