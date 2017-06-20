@@ -330,7 +330,7 @@ if (!file.exists(fn)) {
 The object that `jags` returns is complicated. `summary()` returns a bunch of information, including the mean and SD, quantiles, R-hat, and effective sample size:
 
 ```{r sum1}
-summary(j1)
+summary(j1$BUGSoutput)
 ```
 
 Note bad R-hat and eff sample size ...
@@ -362,7 +362,7 @@ Dietz says he used a mean infectious period of 11 days and found an initial popu
 ```{r jags_harbin,cache=TRUE}
 harbin_inits <- replicate(3,list(
                                 newinf=round(harbin[,"plague_deaths"]),
-                                beta=6e-5,gamma=1/11),
+                                beta=6e-5,gamma=1/11,p.report=0.9),
                           simplify=FALSE)
 j2_t <- system.time(j2 <- jags(model.file="sir.jags",
            data=list(incid=round(harbin[,"plague_deaths"]),N=3000,
@@ -372,18 +372,25 @@ j2_t <- system.time(j2 <- jags(model.file="sir.jags",
      parameters.to.save=c("beta","gamma","p.report"),
      progress.bar="none"))
 ```
-(This takes about 2 minutes on my laptop)
+This takes about 2 minutes on my laptop. I think `p.report` is pegged
+to 1.0 because we have 2 plague deaths in the first week and we said
+that $I(0)$ was 1 ... (how is this even possible?)
 
+
+Trace plot:
 
 ```{r}
 xyplot(as.mcmc(j2))
 ```
 
-We can convert
+We can further convert the `mcmc` object to a matrix in order to
+look at pairwise values of the samples (looking for correlations):
 ```{r}
 pairs(as.matrix(as.mcmc(j2)),pch=".",gap=0,
       col=rep(c("black","blue","red"),each=1000))
 ```
+
+If you have time, feel free to try out the boarding school data!
 
 ## In conclusion ...
 

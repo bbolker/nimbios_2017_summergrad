@@ -1,4 +1,3 @@
-## https://rpubs.com/bbolker/logist_stanjags
 model {
   ## initial values
   S[1] <- N-1
@@ -6,8 +5,8 @@ model {
   R[1] <- 0
   newinf[1] ~ dbin(0.5,10)  ## hack!
   incid[1] ~ dbin(p.report,I[1])
+  recprob <- 1-exp(-gamma) ## compute outside loop ...
   ## step through observations
-  recprob <- 1-exp(-gamma)
   for (t in 2:nobs) {
      infprob[t] <- 1-exp(-beta*I[t-1]/N)
      newinf[t] ~ dbin(infprob[t],S[t-1])
@@ -18,7 +17,8 @@ model {
      incid[t] ~ dbin(p.report,newinf[t])
   }
   ## priors
-  p.report ~ dbeta(1,1)
+  p.report ~ dbeta(1,1) ## Beta(1,1) = Unif(0,1)
+  ## both exponential with mean 1 ...
   beta ~ dgamma(1,1)
   gamma ~ dgamma(1,1)
 }
