@@ -330,7 +330,7 @@ if (!file.exists(fn)) {
 The object that `jags` returns is complicated. `summary()` returns a bunch of information, including the mean and SD, quantiles, R-hat, and effective sample size:
 
 ```{r sum1}
-summary(j1$BUGSoutput)
+print(j1,digits=2)
 ```
 
 Note bad R-hat and eff sample size ...
