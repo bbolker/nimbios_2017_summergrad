@@ -174,10 +174,10 @@ $$
 
 ## Trajectory matching (shooting)
 
-Implement a trajectory-matching solution to estimate
+Now we'll implement a trajectory-matching solution to estimate
 the parameters of the model.
 
-```{r}
+```{r lab_solns}
 source("lab_solns.R")
 ```
 
@@ -224,7 +224,7 @@ R0fun <- function(beta,gamma,N=100,I0=1) {
     return((1-exp(-beta*I0/N))*N/(1-exp(-gamma)))
 }
 ```
-True value `r R0fun(2,1)` vs. estimated `r R0fun(coef(tfit)[1],coef(tfit)[2])`
+True value `r round(R0fun(2,1),1)` vs. estimated `r round(R0fun(coef(tfit)[1],coef(tfit)[2]),1)` ...
 
 </blockquote>
 
@@ -237,40 +237,89 @@ need to be observe the *full state of the system without error*
 crazy (we just have to assume proc error $\ll$ obs error).
 - this would also work for the [Reed-Frost model](https://en.wikipedia.org/wiki/Reed%E2%80%93Frost_model), where infectious individuals are assumed to recover after one time step.
 - for our example, we need to assume we can observe both incidence ($S \to I$) and recovery ($I \to R$) transitions.
-Implement a gradient-matching solution to estimate
-the parameters of the model.  Given that you know
-the starting value of $S$ ($N-1$), you can update it
-at each time step by subtracting off the (perfectly
-observed) incidence for the period from $t-1$ to $t$.
-Then you can use the incidence equation above
-$\text{Binom}(N=S(t),p=1-\exp(-\beta I(t) \Delta t))$
-to calculate the expected $p$ for the binomial distribution
-of incidence, and the R function `dbinom()` (or a
-MATLAB equivalent) to compute the log-likelihood.
+
+If we know the initial states (e.g. assume $I(0)=1$, $S(0)=N-1$, $R(0)=0$), and all of the incidence ($\phi$) and recovery ($\psi) values, we can recover the complete sequence of $S$ and $I$ (and hence compute all likelihoods) via $S=N-\textrm{cumsum}(\phi)$, $I=\textrm{cumsum}(\phi)-\textrm{cumsum}(\psi)$. Then we can compute the probabilities of infection and recovery, and then compute binomial negative log-likelihoods.
+
+```{r stepahead}
+stepahead <- function(beta,gamma,incidence,recover,N=100) {
+    ## hacks to make sure sum(recovery) == sum(incidence),
+    ##  recovery(t) <= I(t)
+    recover <- round(sum(incidence)/sum(recover)*recover)
+    excess <- sum(recover)-sum(incidence)
+    if (excess>0) {
+        recover[which.max(recover)] <- recover[which.max(recover)]-excess
+    }
+    S <- N-cumsum(incidence)
+    I <- pmax(0,cumsum(incidence)-cumsum(recover))
+    p.incid <- 1-exp(-beta*I[-length(I)]/N)
+    p.recov <- 1-exp(-gamma)
+    ## [-1], [-length(S)] used to match S, I
+    ## at *previous* step with incidence and recovery
+    ## in *current* step
+    nlik.incid <- dbinom(incidence[-1],size=S[-length(S)],
+                         prob=p.incid[-length(S)],log=TRUE)
+    nlik.recov <- dbinom(recover[-1],size=I[-length(I)],
+                         prob=p.recov[-length(S)],log=TRUE)
+    return(-sum(nlik.incid)-sum(nlik.recov))
+}
+```
+
+```{r gfit,results="hide"}
+## check:
+stepahead(beta=4,gamma=1,
+          incidence=m1_obsproc[,"incidence"],
+          recover=m1_obsproc[,"recover"])
+gfit <- mle2(minuslogl=stepahead,
+             data=list(incidence=m1_obsproc[,"incidence"],
+                      recover=m1_obsproc[,"recover"]),
+             start=list(beta=4,gamma=1),
+             method="BFGS")
+```
+
+Still biased, but closer:
+
+```{r}
+coef(gfit)
+confint(gfit,method="quad")
+```
 
 ## State-space models in JAGS
 
-```{r jags_model}
-model_fn <- file.path(tempdir(),"sir.jags")
-m1 <- m1[m1[,"S"]>0,]
-inits <- replicate(3,list(newinf=m1[,"incidence"],
-                          beta=0.04,gamma=1),
-                                  simplify=FALSE)
+
+```{r jags_file,echo=FALSE}
+cat(scan(file="sir.jags",what="character",sep="\n"),sep="\n")
+```
+
+Make three *identical* lists containing starting values for
+$\beta$, $\gamma$, and incidence:
+
+```{r inits}
+incid <- m1_obsproc[,"incidence"]
+incid <- incid[incid>0]
+inits <- replicate(3,list(newinf=incid,
+                          beta=4,gamma=1),
+                   simplify=FALSE)
 ```
 
 ```{r fit_jags_model,cache=TRUE}
-j1 <- jags(model.file="sir.jags",
-           data=list(incid=m1[,"incidence"],N=100,
-                     nobs=nrow(m1)),
-           inits=inits,
-     parameters.to.save=c("beta","gamma","p.report"),
-     progress.bar="none")
+fn <- "data/jags_model_fit.rds"
+if (!file.exists(fn)) {
+    j1 <- jags(model.file="sir.jags",
+               data=list(incid=incid,
+                         N=100,
+                         nobs=length(incid)),
+               inits=inits,
+               parameters.to.save=c("beta","gamma","p.report"),
+               progress.bar="none")
+    saveRDS(j1,fn)
+} else {
+    j1 <- readRDS(fn)
+}
 library(coda)
 library(lattice)
 xyplot(as.mcmc(j1))
 densityplot(as.mcmc(j1),layout=c(2,2))
 summary(as.mcmc(j1))
-saveRDS(j1,"data/jags_model_fit.rds")
 ```
 
 ### Real data!
@@ -316,7 +365,7 @@ From [Know Your Meme](http://knowyourmeme.com/photos/572078-how-to-draw-an-owl):
 ![](pix/draw_the_owl.jpg)
 
 ---
-From Neal Stephenson's [*Cryptonomicon*](http://cnqzu.com/library/Anarchy%20Folder/Fiction/Stephenson,_Neal/Stephenson,_Neal_-_Cryptonomicon/Neal%20Stephenson%20-%20Cryptonomicon%20v2%20(HTML,%20Fully%20Proofed)/slide58.html):
+From [*Cryptonomicon*](http://cnqzu.com/library/Anarchy%20Folder/Fiction/Stephenson,_Neal/Stephenson,_Neal_-_Cryptonomicon/Neal%20Stephenson%20-%20Cryptonomicon%20v2%20(HTML,%20Fully%20Proofed)/slide58.html) [@stephenson_cryptonomicon_2002]:
 
 > ... that is what pisses Randy off, and has always pissed him off, about dancing lessons. Any moron can learn to trudge through the basic steps. That takes all of half an hour. But when that half-hour is over, dancing instructors always expect you’ll take flight and go through one of those miraculous time lapse transitions that happen only in Broadway musicals and begin dancing brilliantly. Randy supposes that people who are lousy at math feel the same way: the instructor writes a few simple equations on the board, and ten minutes later he’s deriving the speed of light in a vacuum.
 

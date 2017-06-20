@@ -334,9 +334,10 @@ for (i in 1:nt) {
 <<lincode2,results="hide">>=
 library(deSolve)
 linfun <- function(t,y,parms) {
-  g <- with(as.list(c(y,parms)), {  ## magic to use param names
-     N_new <- rnorm(1,N+b,sd_proc)
-     c(N=N_new,Nobs=rnorm(1,N_new,sd_obs))
+    ## with() is magic to use param names directly
+    g <- with(as.list(c(y,parms)), {  
+        N_new <- rnorm(1,mean=N+b,sd=sd_proc)
+        c(N=N_new,Nobs=rnorm(1,mean=N_new,sd=sd_obs))
   })
   return(list(g))  ## deSolve needs this format
 }
@@ -438,20 +439,21 @@ N(t+1) & \sim  \text{Poisson}\left(\frac{aN(t)}{b+N(t)}\right) \\
 
 \begin{frame}[fragile]
 \frametitle{R code}
-<<hypex>>=
+<<hypex,results="hide">>=
 hypfun <- function(t,y,parms) {
-    g <- with(as.list(c(y,parms)), {  ## magic to use param names
+    g <- with(as.list(c(y,parms)), {  
         N_det <- a*N/(b+N)
         N <- rpois(1,lambda=N_det)
         N_obs <- rbinom(1,size=N,prob=prob_obs)
         c(N=N,Nobs=N_obs)
   })
-  return(list(as.numeric(g)))  ## deSolve needs this format
+  return(list(as.numeric(g)))  ## deSolve needs numeric() (?)
 }
 set.seed(101)
 N0 <- c(N=4,N_obs=4)
 hypparms <- c(a=6,b=1,prob_obs=0.9)
-ode(N0,times=1:nt,func=hypfun,parms=hypparms,method="iteration")
+ode(N0,times=1:nt,func=hypfun,
+    parms=hypparms,method="iteration")
 @
 \end{frame}
 
@@ -461,8 +463,8 @@ ode(N0,times=1:nt,func=hypfun,parms=hypparms,method="iteration")
 \frametitle{Stochastic ODEs}
 \begin{itemize}
 \item continuous-time, continuous-state
-\item ordinary differential equations plus a \emph{Wiener process} \\
-(= derivative of a Brownian motion)
+\item ordinary differential equations plus $dW$  \\
+(= derivative of a Brownian motion/Wiener process)
 \item delicate analysis (For biologists: \cite{turelli_random_1977,roughgarden_theory_1995}. For mathematicians: \cite{oksendal_stochastic_2003})
 \item More common for cellular/physiological than population models
 \item Solve via \emph{Euler-Maruyama} \\
@@ -471,7 +473,7 @@ ode(N0,times=1:nt,func=hypfun,parms=hypparms,method="iteration")
 \end{frame}
 
 \begin{frame}
-\frametitle{Markov processes}
+\frametitle{(continuous-time) Markov processes}
 \begin{itemize}
 \item continuous-time, discrete-state
 \item specify (limits of) probabilities of transitions per unit time, e.g. $P(N \to N+1)$ in the interval $(t,t+dt)$ is $rN(t) \, dt$
@@ -489,10 +491,9 @@ ode(N0,times=1:nt,func=hypfun,parms=hypparms,method="iteration")
 \item Easiest: simulate the deterministic
 version of the model (i.e., with neither observation
 nor process error) and compare
-\item Because measurement error is (typically)
+\item Because measurement/observation error is (typically)
 independent at each observation, overall log-likelihood
 is sum of log-likelihood
-\item i.e. 
 \item for Normally distributed, equal-variance error, maximum likelihood estimation equivalent to least-squares
 \item Very common for ODE models, e.g. \cite{GaniLeach2001,vanVeen+2005}
 \item Brute force can be slow/unstable: use \emph{sensitivity equations} \cite{raue_lessons_2013}

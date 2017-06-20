@@ -317,6 +317,8 @@ i.e. ``always accept if $\theta_2$ better: sometimes if $\theta_2$ worse''
 \item very high-dimensional: brute force fails
 \item use the previous two tricks
 \end{itemize}
+\textbf{important}: often need to handle obs+proc error in some
+way to get reliable answers and CIs \citep{king_avoidable_2015}
 \end{frame}
 
 \begin{frame}[fragile]
@@ -401,11 +403,22 @@ for binomial): see \cite{lebauer_translating_2013}
 \end{itemize}
 \end{frame}
 
+\begin{frame}
+\frametitle{Speeding up MCMC}
+\begin{itemize}
+\item reparameterize
+\item try Hamiltonian MC \cite{carpenter_stan_2016}
+\item block (correlated) updates to some parameters
+\item narrow priors and/or fix some parameters
+\end{itemize}
+\end{frame}
+
 <<getjags,echo=FALSE,message=FALSE>>=
 library(R2jags)
 library(coda)
 library(lattice)
 jagsout <- readRDS("data/jags_model_fit.rds")
+jags_long <- readRDS("data/j1_long.rds")
 @
 
 \begin{frame}[fragile]
@@ -461,8 +474,9 @@ cat(jout[10:15],sep="\n")
 \frametitle{Further resources}
 \begin{itemize}
 \item \cite{gelman_bayesian_2013} (fairly hard-core)
-\item \cite{hobbs_bayesian_2015} (friendlier, ecologist-focused)
 \item \cite{gelman_data_2006} (more regression-focused)
+\item \cite{hobbs_bayesian_2015} (friendlier, ecologist-focused)
+\item \cite{McCarthy2007} (even friendlier)
 \end{itemize}
 \end{frame}
 
@@ -471,8 +485,18 @@ cat(jout[10:15],sep="\n")
 \includegraphics[height=0.7\textheight]{pix/xkcd_MCMC.png}
 \end{frame}
 
-\section[Other approaches]{Other approaches to nonlinear dynamical fitting}
+\section[New horizons]{Other approaches to nonlinear dynamical fitting}
 \subsection{}
+
+\begin{frame}
+\frametitle{advances in MCMC}
+\begin{itemize}
+\item new toolboxes: NIMBLE \cite{li_fitting_2017,de_valpine_programming_2017}, PyMC
+\item Hamiltonian Monte Carlo: Stan \cite{carpenter_stan_2016}
+\item variational Bayes, expectation-propagation \ldots \cite{gelman_bayesian_2013}
+\end{itemize}
+\end{frame}
+
 \begin{frame}
 \frametitle{Frequentist alternatives}
 \begin{itemize}
@@ -491,21 +515,20 @@ some classical
 
 \begin{frame}
 \frametitle{Estimation for continuous-time models}
-\begin{itemize}
-\item Particle methods
+\begin{description}
+\item[Particle methods] (freq or Bayesian)
 \begin{itemize}
 \item simulate many trajectories (``particles'') step-by-step
 \item at each step, resample particles weighted by likelihood of current location
 \end{itemize}
-\item Approximate Bayesian computation
+\item[Approximate Bayesian computation]
 \begin{itemize}
 \item sample parameters from prior
 \item simulate trajectories for each parameter set
 \item compute summary statistics (``probes'')
 \item save trajectories with summary stats near observed values
 \end{itemize}
-\end{itemize}
-
+\end{description}
 \end{frame}
 
 \begin{frame}

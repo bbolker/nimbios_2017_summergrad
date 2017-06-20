@@ -7,10 +7,11 @@ model {
   newinf[1] ~ dbin(0.5,10)  ## hack!
   incid[1] ~ dbin(p.report,I[1])
   ## step through observations
+  recprob <- 1-exp(-gamma)
   for (t in 2:nobs) {
-     infprob[t] <- 1-exp(-beta*I[t-1])
+     infprob[t] <- 1-exp(-beta*I[t-1]/N)
      newinf[t] ~ dbin(infprob[t],S[t-1])
-     recover[t] ~ dbin(gamma,I[t-1])
+     recover[t] ~ dbin(recprob,I[t-1])
      S[t] <- S[t-1]-newinf[t]
      I[t] <- I[t-1]+newinf[t]-recover[t]
      R[t] <- R[t-1]+recover[t]
