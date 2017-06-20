@@ -327,7 +327,7 @@ if (!file.exists(fn)) {
 }
 ```
 
-The object that `jags` returns is complicated. `summary()` returns a bunch of information, including the mean and SD, quantiles, R-hat, and effective sample size:
+`jags` returns a complicated object. `print()` returns a bunch of information, including the mean and SD, quantiles, R-hat, and effective sample size:
 
 ```{r sum1}
 print(j1,digits=2)
