@@ -89,7 +89,7 @@ $$
 \end{split}
 $$
 
-- the $1-\exp(-h \Delta t)$ transformation turns a rate (specifically a *hazard*: $P(\textrm{event occurs in } \{t,t+dt\}|\textrm{event hasn't happened yet})/dt$) $h$ into a probability: this means we can use rates $>1$ in a discrete-time model without things going crazy
+- the $1-\exp(-r \Delta t)$ transformation turns a rate $r$ (specifically a *hazard*: $P(\textrm{event occurs in } \{t,t+dt\}|\textrm{event hasn't happened yet})/dt$) into a probability: this means we can use rates $>1$ in a discrete-time model without things going crazy
 - the $\Delta t$ isn't really necessary - we will set $\Delta t=1$ below - but it is sometimes more convenient to have it in the equations than to rescale $\gamma$ and $\beta$ to explore the dynamical consequences of discrete time.
 - similarly, scaling infection as $I/N$ is unnecessary in a constant-population model (we could just rescale $\beta$) but it makes $\beta$ a little easier to interpret
 

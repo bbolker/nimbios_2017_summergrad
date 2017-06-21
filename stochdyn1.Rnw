@@ -324,7 +324,7 @@ N[1] <- a
 Nobs[1] <- rnorm(1,N[1],sd_obs)
 for (i in 1:nt) {
   N[i+1] <- rnorm(1,N[i]+b,sd_proc)
-  Nobs[i+1] <- rnorm(1,N[i+1],sd_proc)
+  Nobs[i+1] <- rnorm(1,N[i+1],sd_obs)
 }
 @
 \end{frame}
