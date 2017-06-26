@@ -218,7 +218,7 @@ with(cc,image(x,y,log(z-min(z)+0.0001),col=viridis_pal()(40),
               xlab="beta",ylab="log10(gamma)"))
 points(2,0,pch=16,cex=2)
 ```
-But $R_0$ (= $(1-exp(-\beta I_0/N)) N/(1-exp(-\gamma))$) isn't *that* far off:
+But $R_0$ (= $(1-\exp(-\beta I_0/N)) N/(1-\exp(-\gamma))$) isn't *that* far off:
 ```{r R0}
 R0fun <- function(beta,gamma,N=100,I0=1) {
     return((1-exp(-beta*I0/N))*N/(1-exp(-gamma)))
